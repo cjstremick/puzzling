@@ -19,7 +19,6 @@ export class PuzzleBoard {
   private touchHandler: TouchHandler;
   private onProgressUpdate?: (placed: number, total: number) => void;
   private soundManager?: SoundManager;
-  private hintedPieces: Set<number> = new Set();
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -347,17 +346,6 @@ export class PuzzleBoard {
         this.ctx.shadowBlur = 10;
         piece.draw(this.ctx);
         this.ctx.restore();
-      } else if (this.hintedPieces.has(piece.id)) {
-        // Highlight hinted piece with green glow
-        this.ctx.save();
-        this.ctx.shadowColor = '#28a745';
-        this.ctx.shadowBlur = 15;
-        this.ctx.strokeStyle = '#28a745';
-        this.ctx.lineWidth = 3;
-        piece.draw(this.ctx);
-        // Draw outline
-        this.ctx.strokeRect(piece.x, piece.y, piece.width, piece.height);
-        this.ctx.restore();
       } else {
         piece.draw(this.ctx);
       }
@@ -381,6 +369,12 @@ export class PuzzleBoard {
 
   setProgressHandler(handler: (placed: number, total: number) => void): void {
     this.onProgressUpdate = handler;
+  }
+
+  hasConnectedPieces(): boolean {
+    const connectedCount = this.pieces.filter(piece => piece.connectedPieces.size > 0).length;
+    Logger.debug(`Checking for connected pieces: ${connectedCount} pieces connected out of ${this.pieces.length}`);
+    return connectedCount > 0;
   }
 
   private isPieceCorrectlyPlaced(piece: PuzzlePiece): boolean {
@@ -454,45 +448,5 @@ export class PuzzleBoard {
         Logger.info(`Piece ${piece.id} locked in place!`);
       }
     }
-  }
-
-  findHintPieces(): PuzzlePiece[] {
-    const hintPieces: PuzzlePiece[] = [];
-
-    for (const piece of this.pieces) {
-      if (piece.isLocked) continue;
-      if (!piece.faceUp) continue;
-
-      // Check if this piece has any potential connections to pieces not in its group
-      const group = this.getAllPiecesInGroup(piece);
-      const groupIds = new Set(group.map(p => p.id));
-
-      for (const otherPiece of this.pieces) {
-        if (otherPiece.id === piece.id) continue;
-        if (groupIds.has(otherPiece.id)) continue; // Skip pieces already in the group
-        if (!otherPiece.faceUp) continue;
-
-        // Check if these pieces can connect
-        if (SnapDetector.checkConnection(piece, otherPiece)) {
-          hintPieces.push(piece);
-          break; // Only need one potential connection per piece
-        }
-      }
-    }
-
-    return hintPieces;
-  }
-
-  setHintPieces(pieces: PuzzlePiece[]): void {
-    this.hintedPieces.clear();
-    for (const piece of pieces) {
-      this.hintedPieces.add(piece.id);
-    }
-    this.render();
-  }
-
-  clearHints(): void {
-    this.hintedPieces.clear();
-    this.render();
   }
 }

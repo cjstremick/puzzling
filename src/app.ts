@@ -17,6 +17,7 @@ export class App {
   private gameState: GameStateManager;
   private statusBar: StatusBar;
   private referencePanel: ReferencePanel;
+  private confirmationDialog: HTMLElement;
   private completionOverlay: HTMLElement;
   private selectedPhoto: PexelsPhoto | null = null;
   private soundManager: SoundManager;
@@ -34,12 +35,145 @@ export class App {
     this.referencePanel = new ReferencePanel(this.gameState);
     this.puzzleBoard = new PuzzleBoard(this.canvas);
     this.puzzleBoard.setSoundManager(this.soundManager);
+    this.puzzleBoard.setProgressHandler((connected, _total) => {
+      // Update game state with connected pieces count (not correctly placed)
+      this.gameState.updateProgress(connected);
+    });
     this.searchPanel = new SearchPanel((photo) => this.onImageSelected(photo), this.gameState);
+    this.confirmationDialog = this.createConfirmationDialog();
     this.completionOverlay = this.createCompletionOverlay();
     this.setupCanvas();
     this.setupGameStateHandlers();
     this.searchPanel.show();
     this.drawPlaceholder();
+  }
+
+  private setupGameStateHandlers(): void {
+    this.gameState.setStateChangeHandler((state) => {
+      console.log('Game state changed to:', state);
+      if (state === 'playing') {
+        this.statusBar.show();
+        this.searchPanel.hide();
+      } else if (state === 'menu') {
+        this.statusBar.hide();
+        this.searchPanel.show();
+      } else if (state === 'completed') {
+        this.showCompletionScreen();
+        this.triggerCelebration();
+      }
+    });
+
+    // Set up hint handler
+    this.statusBar.setNewPuzzleRequestHandler(() => {
+      this.handleNewPuzzleRequest();
+    });
+  }
+
+  private handleNewPuzzleRequest(): void {
+    // Check if any pieces are connected
+    const hasConnectedPieces = this.checkIfPiecesAreConnected();
+
+    if (hasConnectedPieces) {
+      // Show custom confirmation dialog
+      this.confirmationDialog.style.display = 'flex';
+      return;
+    }
+
+    // Reset to menu
+    this.gameState.resetToMenu();
+    this.searchPanel.show();
+  }
+
+  private checkIfPiecesAreConnected(): boolean {
+    const hasConnected = this.puzzleBoard.hasConnectedPieces();
+    console.log('Checking for connected pieces:', hasConnected);
+    return hasConnected;
+  }
+
+  private createConfirmationDialog(): HTMLElement {
+    const dialog = document.createElement('div');
+    dialog.className = 'confirmation-dialog';
+    dialog.innerHTML = `
+      <div class="confirmation-content">
+        <h3>Start New Puzzle?</h3>
+        <p>You have connected pieces in your current puzzle. Starting a new puzzle will lose your progress.</p>
+        <div class="confirmation-buttons">
+          <button class="cancel-btn">Cancel</button>
+          <button class="confirm-btn">Start New Puzzle</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(dialog);
+
+    // Style the dialog
+    Object.assign(dialog.style, {
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      right: '0',
+      bottom: '0',
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      display: 'none',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: '2500'
+    });
+
+    // Style the content
+    const content = dialog.querySelector('.confirmation-content') as HTMLElement;
+    Object.assign(content.style, {
+      backgroundColor: 'white',
+      padding: '30px',
+      borderRadius: '12px',
+      textAlign: 'center',
+      boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)',
+      maxWidth: '400px',
+      width: '90%'
+    });
+
+    // Style buttons
+    const buttons = dialog.querySelector('.confirmation-buttons') as HTMLElement;
+    Object.assign(buttons.style, {
+      display: 'flex',
+      gap: '15px',
+      justifyContent: 'center',
+      marginTop: '20px'
+    });
+
+    const cancelBtn = dialog.querySelector('.cancel-btn') as HTMLElement;
+    Object.assign(cancelBtn.style, {
+      padding: '10px 20px',
+      backgroundColor: '#6c757d',
+      color: 'white',
+      border: 'none',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      fontSize: '14px'
+    });
+
+    const confirmBtn = dialog.querySelector('.confirm-btn') as HTMLElement;
+    Object.assign(confirmBtn.style, {
+      padding: '10px 20px',
+      backgroundColor: '#dc3545',
+      color: 'white',
+      border: 'none',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      fontSize: '14px'
+    });
+
+    // Add event listeners
+    cancelBtn.addEventListener('click', () => {
+      dialog.style.display = 'none';
+    });
+
+    confirmBtn.addEventListener('click', () => {
+      dialog.style.display = 'none';
+      this.gameState.resetToMenu();
+      this.searchPanel.show();
+    });
+
+    return dialog;
   }
 
   private createCompletionOverlay(): HTMLElement {
@@ -105,41 +239,6 @@ export class App {
     });
 
     return overlay;
-  }
-
-  private showHints(): void {
-    const hintPieces = this.puzzleBoard.findHintPieces();
-    this.puzzleBoard.setHintPieces(hintPieces);
-
-    // Clear hints after 3 seconds
-    setTimeout(() => {
-      this.puzzleBoard.clearHints();
-    }, 3000);
-  }
-
-  private setupGameStateHandlers(): void {
-    this.gameState.setStateChangeHandler((state) => {
-      console.log('Game state changed to:', state);
-      if (state === 'playing') {
-        this.statusBar.show();
-        this.searchPanel.hide();
-      } else if (state === 'menu') {
-        this.statusBar.hide();
-        this.searchPanel.show();
-      } else if (state === 'completed') {
-        this.showCompletionScreen();
-        this.triggerCelebration();
-      }
-    });
-
-    this.puzzleBoard.setProgressHandler((placed, _total) => {
-      this.gameState.updateProgress(placed);
-    });
-
-    // Set up hint handler
-    this.statusBar.setHintRequestHandler(() => {
-      this.showHints();
-    });
   }
 
   private showCompletionScreen(): void {

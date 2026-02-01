@@ -9,19 +9,20 @@ export class StatusBar {
   private progressElement!: HTMLElement;
   private attributionElement!: HTMLElement;
   private peekButton!: HTMLElement;
-  private hintButton!: HTMLElement;
+  private newPuzzleButton!: HTMLElement;
   private peekOverlay!: HTMLElement;
   private gameState: GameStateManager;
   private currentPhoto?: PexelsPhoto;
-  private onHintRequest?: () => void;
+  private onNewPuzzleRequest?: () => void;
 
   constructor(gameState: GameStateManager) {
     this.gameState = gameState;
     this.element = this.createElement();
     this.timerElement = this.element.querySelector('.status-timer') as HTMLElement;
     this.progressElement = this.element.querySelector('.status-progress') as HTMLElement;
+    this.attributionElement = this.element.querySelector('.status-attribution') as HTMLElement;
     this.peekButton = this.element.querySelector('.peek-button') as HTMLElement;
-    this.hintButton = this.element.querySelector('.hint-button') as HTMLElement;
+    this.newPuzzleButton = this.element.querySelector('.new-puzzle-button') as HTMLElement;
     this.peekOverlay = this.createPeekOverlay();
 
     this.setupEventHandlers();
@@ -38,8 +39,8 @@ export class StatusBar {
         <div class="status-progress">0/0</div>
       </div>
       <div class="status-center" style="flex: 1; display: flex; justify-content: center; gap: 10px;">
-        <button class="hint-button">Hint</button>
-        <button class="peek-button">Peek at original</button>
+        <button class="peek-button">Peek</button>
+        <button class="new-puzzle-button">New Puzzle</button>
       </div>
       <div class="status-attribution"></div>
     `;
@@ -51,7 +52,7 @@ export class StatusBar {
       bottom: '0',
       left: '0',
       right: '0',
-      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      backgroundColor: 'rgba(0, 0, 0, 0.7)',
       color: 'white',
       padding: '10px 20px',
       display: 'flex',
@@ -79,10 +80,10 @@ export class StatusBar {
     peekButton.addEventListener('mouseover', () => peekButton.style.backgroundColor = '#0056b3');
     peekButton.addEventListener('mouseout', () => peekButton.style.backgroundColor = '#007bff');
 
-    // Style the hint button
-    const hintButton = element.querySelector('.hint-button') as HTMLElement;
-    Object.assign(hintButton.style, {
-      backgroundColor: '#28a745',
+    // Style the new puzzle button
+    const newPuzzleButton = element.querySelector('.new-puzzle-button') as HTMLElement;
+    Object.assign(newPuzzleButton.style, {
+      backgroundColor: '#fd7e14',
       color: 'white',
       border: 'none',
       padding: '8px 16px',
@@ -92,8 +93,8 @@ export class StatusBar {
       transition: 'background-color 0.2s'
     });
 
-    hintButton.addEventListener('mouseover', () => hintButton.style.backgroundColor = '#1e7e34');
-    hintButton.addEventListener('mouseout', () => hintButton.style.backgroundColor = '#28a745');
+    newPuzzleButton.addEventListener('mouseover', () => newPuzzleButton.style.backgroundColor = '#c82333');
+    newPuzzleButton.addEventListener('mouseout', () => newPuzzleButton.style.backgroundColor = '#fd7e14');
 
     return element;
   }
@@ -187,9 +188,9 @@ export class StatusBar {
       this.showPeek();
     });
 
-    // Hint button handler
-    this.hintButton.addEventListener('click', () => {
-      this.requestHint();
+    // New puzzle button handler
+    this.newPuzzleButton.addEventListener('click', () => {
+      this.requestNewPuzzle();
     });
 
     // Overlay click handlers for dismissal
@@ -263,12 +264,12 @@ export class StatusBar {
     this.peekOverlay.style.display = 'none';
   }
 
-  private requestHint(): void {
-    this.onHintRequest?.();
+  private requestNewPuzzle(): void {
+    this.onNewPuzzleRequest?.();
   }
 
-  setHintRequestHandler(handler: () => void): void {
-    this.onHintRequest = handler;
+  setNewPuzzleRequestHandler(handler: () => void): void {
+    this.onNewPuzzleRequest = handler;
   }
 
   destroy(): void {

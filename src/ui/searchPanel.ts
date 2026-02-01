@@ -32,6 +32,7 @@ export class SearchPanel {
     this.element.id = 'search-panel';
     this.element.innerHTML = `
       <div class="search-container">
+        <button class="close-btn" style="display: none;">✕</button>
         <h2>Create a Puzzle</h2>
         <div class="search-bar">
           <input type="text" placeholder="Enter keywords (e.g., mountain, sunset, city)" />
@@ -82,7 +83,32 @@ export class SearchPanel {
     Object.assign(container.style, {
       display: 'flex',
       flexDirection: 'column',
-      gap: '15px'
+      gap: '15px',
+      position: 'relative'
+    });
+
+    // Style close button
+    const closeBtn = this.element.querySelector('.close-btn') as HTMLElement;
+    Object.assign(closeBtn.style, {
+      position: 'absolute',
+      top: '10px',
+      right: '10px',
+      backgroundColor: '#6c757d',
+      color: 'white',
+      border: 'none',
+      borderRadius: '50%',
+      width: '30px',
+      height: '30px',
+      cursor: 'pointer',
+      fontSize: '16px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: '1001'
+    });
+
+    closeBtn.addEventListener('click', () => {
+      this.hide();
     });
 
     // Style the search bar
@@ -366,6 +392,10 @@ export class SearchPanel {
     }
     this.element.style.display = 'block';
     this.isVisible = true;
+
+    // Show close button if there's an active puzzle
+    const closeBtn = this.element.querySelector('.close-btn') as HTMLElement;
+    closeBtn.style.display = this.gameState.currentState === 'playing' ? 'flex' : 'none';
   }
 
   hide(): void {
