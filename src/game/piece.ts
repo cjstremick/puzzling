@@ -93,17 +93,11 @@ export class PuzzlePiece {
       ctx.drawImage(tempCanvas, 0, 0, this.width, this.height);
     } else {
       // Draw placeholder (face down or no image)
-      ctx.fillStyle = this.faceUp ? '#ffffff' : '#8B4513';
+      ctx.fillStyle = this.faceUp ? '#ffffff' : '#F4A460';
       ctx.fillRect(0, 0, this.width, this.height);
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#555555';
+      ctx.lineWidth = 1.5;
       ctx.strokeRect(0, 0, this.width, this.height);
-
-      // Draw piece ID for debugging
-      ctx.fillStyle = this.faceUp ? '#000000' : '#ffffff';
-      ctx.font = '12px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(this.id.toString(), this.width / 2, this.height / 2 + 4);
     }
 
     ctx.restore();
