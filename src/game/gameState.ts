@@ -21,10 +21,10 @@ export class GameStateManager {
   ];
 
   constructor(settings: GameSettings = {
-    difficulty: GameStateManager.DIFFICULTIES[1], // Medium default
+    difficulty: GameStateManager.DIFFICULTIES[0], // Easy default (16 pieces)
     edgeOnly: false,
-    preFlip: false,
-    preRotate: false
+    preFlip: true,
+    preRotate: true
   }) {
     // Load settings from localStorage if available
     const savedSettings = this.loadSettings();
