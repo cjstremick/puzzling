@@ -269,13 +269,15 @@ export class App {
         particleCount: 3,
         angle: 60,
         spread: 55,
-        origin: { x: 0 }
+        origin: { x: 0 },
+        zIndex: 4000
       });
       confetti({
         particleCount: 3,
         angle: 120,
         spread: 55,
-        origin: { x: 1 }
+        origin: { x: 1 },
+        zIndex: 4000
       });
 
       if (Date.now() < end) {
@@ -291,25 +293,29 @@ export class App {
         particleCount: 50,
         angle: 45,
         spread: 90,
-        origin: { x: 0, y: 0 }
+        origin: { x: 0, y: 0 },
+        zIndex: 4000
       });
       confetti({
         particleCount: 50,
         angle: 135,
         spread: 90,
-        origin: { x: 1, y: 0 }
+        origin: { x: 1, y: 0 },
+        zIndex: 4000
       });
       confetti({
         particleCount: 50,
         angle: 225,
         spread: 90,
-        origin: { x: 1, y: 1 }
+        origin: { x: 1, y: 1 },
+        zIndex: 4000
       });
       confetti({
         particleCount: 50,
         angle: 315,
         spread: 90,
-        origin: { x: 0, y: 1 }
+        origin: { x: 0, y: 1 },
+        zIndex: 4000
       });
     }, 500);
   }
