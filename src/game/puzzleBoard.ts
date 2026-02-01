@@ -18,6 +18,7 @@ export class PuzzleBoard {
   private hasMovedBeyondThreshold: boolean = false;
   private touchHandler: TouchHandler;
   private onProgressUpdate?: (placed: number, total: number) => void;
+  private onPiecesChanged?: (pieces: PuzzlePiece[]) => void;
   private soundManager?: SoundManager;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -75,21 +76,24 @@ export class PuzzleBoard {
     this.pointerDownPos = { x, y };
     this.hasMovedBeyondThreshold = false;
 
-    // Find piece under cursor, considering groups and z-order
-    let selectedGroup: PuzzlePiece[] | null = null;
-    let selectedPiece: PuzzlePiece | null = null;
+    // Find all pieces under cursor, prioritizing smaller clusters
+    let candidates: { piece: PuzzlePiece; groupSize: number }[] = [];
 
     // Iterate from top to bottom (back to front in array)
     for (let i = this.pieces.length - 1; i >= 0; i--) {
       const piece = this.pieces[i];
       if (!piece.isLocked && piece.containsPoint(x, y)) {
-        selectedPiece = piece;
-        selectedGroup = this.getAllPiecesInGroup(piece);
-        break; // Found the topmost piece/group under cursor
+        const groupSize = this.getAllPiecesInGroup(piece).length;
+        candidates.push({ piece, groupSize });
       }
     }
 
-    if (selectedPiece && selectedGroup) {
+    if (candidates.length > 0) {
+      // Select the piece from the smallest cluster (prioritize smaller groups)
+      candidates.sort((a, b) => a.groupSize - b.groupSize);
+      const selectedCandidate = candidates[0];
+      const selectedPiece = selectedCandidate.piece;
+
       // Bring the selected group to the front immediately upon selection
       this.bringToFront(selectedPiece);
 
@@ -103,7 +107,7 @@ export class PuzzleBoard {
         y: y - selectedPiece.y
       };
 
-      // Note: We don't start dragging yet - wait for movement threshold
+      Logger.debug(`Selected piece ${selectedPiece.id} from cluster of ${selectedCandidate.groupSize} pieces`);
     }
   }
 
@@ -227,6 +231,9 @@ export class PuzzleBoard {
         // Update progress
         this.updateProgress();
         this.render();
+
+        // Notify that pieces have changed
+        this.onPiecesChanged?.(this.pieces);
       }
       // If we didn't move beyond threshold, it was just a click - do nothing
     }
@@ -326,14 +333,14 @@ export class PuzzleBoard {
 
        this.pieces = await PuzzleGenerator.generatePuzzle(image, puzzleConfig);
        this.render();
-      } catch (error) {
-        Logger.error('Failed to load puzzle:', error instanceof Error ? error : undefined, error);
-        // ErrorHandler.handleError(error instanceof Error ? error : new Error(String(error)), 'PuzzleBoard.loadPuzzle');
-        throw error;
-      }
-  }
+       } catch (error) {
+         Logger.error('Failed to load puzzle:', error instanceof Error ? error : undefined, error);
+         // ErrorHandler.handleError(error instanceof Error ? error : new Error(String(error)), 'PuzzleBoard.loadPuzzle');
+         throw error;
+       }
+   }
 
-  private render(): void {
+  render(): void {
     // Clear canvas
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
@@ -357,6 +364,8 @@ export class PuzzleBoard {
     if (this.selectedPiece) {
       this.selectedPiece.flip();
       this.render();
+      // Notify that pieces have changed
+      this.onPiecesChanged?.(this.pieces);
     }
   }
 
@@ -364,6 +373,8 @@ export class PuzzleBoard {
     if (this.selectedPiece && this.selectedPiece.faceUp) {
       this.selectedPiece.rotate90();
       this.render();
+      // Notify that pieces have changed
+      this.onPiecesChanged?.(this.pieces);
     }
   }
 
@@ -371,10 +382,24 @@ export class PuzzleBoard {
     this.onProgressUpdate = handler;
   }
 
+  setPiecesChangedHandler(handler: (pieces: PuzzlePiece[]) => void): void {
+    this.onPiecesChanged = handler;
+  }
+
   hasConnectedPieces(): boolean {
     const connectedCount = this.pieces.filter(piece => piece.connectedPieces.size > 0).length;
     Logger.debug(`Checking for connected pieces: ${connectedCount} pieces connected out of ${this.pieces.length}`);
     return connectedCount > 0;
+  }
+
+  // Restore pieces from saved state
+  restorePieces(pieces: PuzzlePiece[]): void {
+    this.pieces = pieces;
+  }
+
+  // Get current pieces (for saving state)
+  getPieces(): PuzzlePiece[] {
+    return [...this.pieces];
   }
 
   private isPieceCorrectlyPlaced(piece: PuzzlePiece): boolean {
@@ -394,11 +419,26 @@ export class PuzzleBoard {
   }
 
   private updateProgress(): void {
-    // Count pieces that are connected to at least one other piece
-    const connected = this.pieces.filter(p => p.connectedPieces.size > 0).length;
+    // Count the size of the largest connected component (cluster)
+    const largestClusterSize = this.getLargestClusterSize();
     const total = this.pieces.length;
-    Logger.debug(`Progress update: ${connected}/${total} pieces connected`);
-    this.onProgressUpdate?.(connected, total);
+    Logger.debug(`Progress update: ${largestClusterSize}/${total} pieces in largest cluster`);
+    this.onProgressUpdate?.(largestClusterSize, total);
+  }
+
+  private getLargestClusterSize(): number {
+    const visited = new Set<number>();
+    let largestSize = 0;
+
+    for (const piece of this.pieces) {
+      if (!visited.has(piece.id)) {
+        const cluster = this.getAllPiecesInGroup(piece);
+        cluster.forEach(p => visited.add(p.id));
+        largestSize = Math.max(largestSize, cluster.length);
+      }
+    }
+
+    return largestSize;
   }
 
   private rotateGroup(group: PuzzlePiece[]): void {
@@ -439,6 +479,9 @@ export class PuzzleBoard {
         this.soundManager?.play('rotate');
       }
     }
+
+    // Notify that pieces have changed
+    this.onPiecesChanged?.(this.pieces);
   }
 
   private checkAndLockCorrectlyPlacedPieces(): void {

@@ -16,8 +16,8 @@ export class SearchPanel {
   private isVisible: boolean = true;
 
   private readonly randomTerms = [
-    'mountain', 'beach', 'forest', 'tools', 'animal', 'desert', 'machines', 'snow',
-    'classic car', 'muscle car', 'michigan', 'puppies', 'cat'
+    'mountain', 'sports', 'forest', 'tools', 'desert', 'machines', 'football',
+    'classic car', 'muscle car', 'michigan', 'cat'
   ];
 
   constructor(onImageSelected: (photo: PexelsPhoto) => void, gameState: GameStateManager) {

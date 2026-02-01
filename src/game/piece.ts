@@ -113,4 +113,25 @@ export class PuzzlePiece {
     cloned.groupId = this.groupId;
     return cloned;
   }
+
+  // Serialize piece for persistence
+  toJSON(): any {
+    return {
+      id: this.id,
+      x: this.x,
+      y: this.y,
+      width: this.width,
+      height: this.height,
+      rotation: this.rotation,
+      faceUp: this.faceUp,
+      connections: this.connections,
+      isDragging: this.isDragging,
+      dragOffset: this.dragOffset,
+      isLocked: this.isLocked,
+      originalPosition: this.originalPosition,
+      connectedPieces: Array.from(this.connectedPieces),
+      groupId: this.groupId
+      // Note: imageData is not serialized - will be recreated from photo
+    };
+  }
 }

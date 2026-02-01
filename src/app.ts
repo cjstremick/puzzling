@@ -7,7 +7,9 @@ import { GameStateManager } from './game/gameState';
 import { StatusBar } from './ui/statusBar';
 import { ReferencePanel } from './ui/referencePanel';
 import { SoundManager } from './audio/soundManager';
+import { PuzzleGenerator } from './game/puzzleGenerator';
 import type { PexelsPhoto } from './api/imageSearch';
+import type { PuzzlePiece } from './game/piece';
 
 export class App {
   private canvas: HTMLCanvasElement;
@@ -39,13 +41,112 @@ export class App {
       // Update game state with connected pieces count (not correctly placed)
       this.gameState.updateProgress(connected);
     });
+    this.puzzleBoard.setPiecesChangedHandler((pieces) => {
+      // Save updated pieces to game state
+      this.gameState.updatePuzzlePieces(pieces);
+    });
     this.searchPanel = new SearchPanel((photo) => this.onImageSelected(photo), this.gameState);
     this.confirmationDialog = this.createConfirmationDialog();
     this.completionOverlay = this.createCompletionOverlay();
     this.setupCanvas();
     this.setupGameStateHandlers();
-    this.searchPanel.show();
-    this.drawPlaceholder();
+
+    // Try to restore saved game state
+    this.restoreSavedGameState();
+  }
+
+  private async restoreSavedGameState(): Promise<void> {
+    try {
+      const savedState = this.gameState.loadSavedGameState();
+      if (!savedState) {
+        // No saved state, show search panel
+        this.searchPanel.show();
+        this.drawPlaceholder();
+        return;
+      }
+
+      // Restore the game state
+      this.gameState.restoreGameState(savedState);
+
+      // If we have a saved photo and puzzle config, try to restore the puzzle
+      if (savedState.photo && savedState.puzzleConfig) {
+        this.selectedPhoto = savedState.photo;
+
+        // Update UI components with restored photo
+        this.statusBar.setPhoto(savedState.photo);
+        this.referencePanel.setPhoto(savedState.photo);
+
+        try {
+          // Recreate the image and puzzle pieces
+          const image = new Image();
+          image.crossOrigin = 'anonymous';
+          await new Promise((resolve, reject) => {
+            image.onload = resolve;
+            image.onerror = reject;
+            image.src = savedState.photo!.src.large;
+          });
+
+          // Generate puzzle with saved config
+          const pieces = await PuzzleGenerator.generatePuzzle(image, savedState.puzzleConfig);
+
+          // Restore piece states from saved data
+          const restoredPieces = this.restorePieceStates(pieces, this.gameState.puzzlePieces);
+
+          // Update puzzle board with restored pieces
+          this.puzzleBoard.restorePieces(restoredPieces);
+
+          // Set canvas size to saved dimensions
+          this.canvas.width = savedState.canvasWidth;
+          this.canvas.height = savedState.canvasHeight;
+
+          this.puzzleBoard.render();
+
+          console.log(`Restored puzzle: ${restoredPieces.length} pieces, ${this.gameState.currentState} state`);
+        } catch (error) {
+          console.warn('Failed to restore puzzle from saved state:', error);
+          // Clear corrupted save and start fresh
+          this.gameState.clearSavedGameState();
+          this.searchPanel.show();
+          this.drawPlaceholder();
+        }
+      } else {
+        // No photo/config, but we restored other state
+        this.searchPanel.show();
+        this.drawPlaceholder();
+      }
+    } catch (error) {
+      console.error('Error restoring saved game state:', error);
+      // Clear corrupted save and start fresh
+      this.gameState.clearSavedGameState();
+      this.searchPanel.show();
+      this.drawPlaceholder();
+    }
+  }
+
+  private restorePieceStates(generatedPieces: PuzzlePiece[], savedPieces: PuzzlePiece[]): PuzzlePiece[] {
+    // Create a map of saved pieces by ID for quick lookup
+    const savedPiecesMap = new Map<number, PuzzlePiece>();
+    savedPieces.forEach(piece => savedPiecesMap.set(piece.id, piece));
+
+    // Update generated pieces with saved state
+    return generatedPieces.map(generatedPiece => {
+      const savedPiece = savedPiecesMap.get(generatedPiece.id);
+      if (savedPiece) {
+        // Restore all state except imageData (which is already set in generated piece)
+        generatedPiece.x = savedPiece.x;
+        generatedPiece.y = savedPiece.y;
+        generatedPiece.rotation = savedPiece.rotation;
+        generatedPiece.faceUp = savedPiece.faceUp;
+        generatedPiece.connections = [...savedPiece.connections];
+        generatedPiece.isDragging = savedPiece.isDragging;
+        generatedPiece.dragOffset = { ...savedPiece.dragOffset };
+        generatedPiece.isLocked = savedPiece.isLocked;
+        generatedPiece.originalPosition = { ...savedPiece.originalPosition };
+        generatedPiece.connectedPieces = new Set(savedPiece.connectedPieces);
+        generatedPiece.groupId = savedPiece.groupId;
+      }
+      return generatedPiece;
+    });
   }
 
   private setupGameStateHandlers(): void {
@@ -364,6 +465,24 @@ export class App {
       // Start the game
       this.gameState.startGame(difficulty.totalPieces);
       this.soundManager.setEnabled(true);
+
+      // Save the complete game state
+      const puzzleConfig = {
+        rows: difficulty.rows,
+        cols: difficulty.cols,
+        shuffle: true,
+        preFlip: this.gameState.settings.preFlip,
+        preRotate: this.gameState.settings.preRotate,
+        canvasWidth: this.canvas.width,
+        canvasHeight: this.canvas.height
+      };
+      this.gameState.setPuzzleState(
+        photo,
+        this.puzzleBoard.getPieces(),
+        this.canvas.width,
+        this.canvas.height,
+        puzzleConfig
+      );
     } catch (error) {
       console.error('Failed to load puzzle:', error);
       // Show error message
