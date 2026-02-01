@@ -30,6 +30,22 @@ export class SearchPanel {
   private createElement(): void {
     this.element = document.createElement('div');
     this.element.id = 'search-panel';
+    
+    // Create backdrop to block interaction with puzzle
+    const backdrop = document.createElement('div');
+    backdrop.className = 'search-backdrop';
+    Object.assign(backdrop.style, {
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      right: '0',
+      bottom: '0',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      zIndex: '999',
+      backdropFilter: 'blur(2px)'
+    });
+    document.body.appendChild(backdrop);
+    
     this.element.innerHTML = `
       <div class="search-container">
         <button class="close-btn" style="display: none;">✕</button>
@@ -47,14 +63,14 @@ export class SearchPanel {
               <!-- Options populated dynamically -->
             </select>
           </div>
-           <div class="setting-group checkboxes">
-             <label>
-               <input type="checkbox" id="pre-flip"> Pre-flip pieces
-             </label>
-             <label>
-               <input type="checkbox" id="pre-rotate"> Start pieces correctly oriented
-             </label>
-           </div>
+            <div class="setting-group checkboxes">
+              <label>
+                <input type="checkbox" id="pre-flip"> Pre-flip pieces
+              </label>
+              <label>
+                <input type="checkbox" id="pre-rotate"> Start pieces correctly oriented
+              </label>
+            </div>
         </div>
         <div class="results-grid"></div>
         <div class="attribution">Photos provided by <a href="https://www.pexels.com" target="_blank">Pexels</a></div>
@@ -91,8 +107,8 @@ export class SearchPanel {
     const closeBtn = this.element.querySelector('.close-btn') as HTMLElement;
     Object.assign(closeBtn.style, {
       position: 'absolute',
-      top: '10px',
-      right: '10px',
+      top: '0px',
+      right: '0px',
       backgroundColor: '#6c757d',
       color: 'white',
       border: 'none',
@@ -393,6 +409,12 @@ export class SearchPanel {
     this.element.style.display = 'block';
     this.isVisible = true;
 
+    // Show backdrop
+    const backdrop = document.querySelector('.search-backdrop') as HTMLElement;
+    if (backdrop) {
+      backdrop.style.display = 'block';
+    }
+
     // Show close button if there's an active puzzle
     const closeBtn = this.element.querySelector('.close-btn') as HTMLElement;
     closeBtn.style.display = this.gameState.currentState === 'playing' ? 'flex' : 'none';
@@ -401,6 +423,12 @@ export class SearchPanel {
   hide(): void {
     this.element.style.display = 'none';
     this.isVisible = false;
+    
+    // Hide backdrop when hiding dialog
+    const backdrop = document.querySelector('.search-backdrop') as HTMLElement;
+    if (backdrop) {
+      backdrop.style.display = 'none';
+    }
   }
 
   toggle(): void {
@@ -408,6 +436,16 @@ export class SearchPanel {
       this.hide();
     } else {
       this.show();
+    }
+  }
+
+  destroy(): void {
+    this.element.remove();
+    
+    // Remove backdrop
+    const backdrop = document.querySelector('.search-backdrop') as HTMLElement;
+    if (backdrop) {
+      backdrop.remove();
     }
   }
 }
