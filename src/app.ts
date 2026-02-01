@@ -209,7 +209,7 @@ export class App {
     const content = overlay.querySelector('.completion-content') as HTMLElement;
     Object.assign(content.style, {
       backgroundColor: 'white',
-      padding: '40px',
+      padding: '30px',
       borderRadius: '16px',
       textAlign: 'center',
       boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
@@ -239,9 +239,51 @@ export class App {
     return overlay;
   }
 
+  private centerCompletedPuzzle(): void {
+    const pieces = this.puzzleBoard.getPieces();
+    const lockedPieces = pieces.filter(piece => piece.isLocked);
+
+    if (lockedPieces.length === 0) return;
+
+    // Calculate the average center of all locked pieces
+    let totalCenterX = 0;
+    let totalCenterY = 0;
+
+    for (const piece of lockedPieces) {
+      totalCenterX += piece.x + piece.width / 2;
+      totalCenterY += piece.y + piece.height / 2;
+    }
+
+    const puzzleCenterX = totalCenterX / lockedPieces.length;
+    const puzzleCenterY = totalCenterY / lockedPieces.length;
+
+    // Calculate center of the canvas
+    const canvasCenterX = this.canvas.width / 2;
+    const canvasCenterY = this.canvas.height / 2;
+
+    // Calculate offset needed to center the puzzle
+    const offsetX = canvasCenterX - puzzleCenterX;
+    const offsetY = canvasCenterY - puzzleCenterY;
+
+    // Apply offset to all pieces
+    for (const piece of pieces) {
+      piece.x += offsetX;
+      piece.y += offsetY;
+    }
+
+    // Update the puzzle board display
+    this.puzzleBoard.render();
+
+    // Save the updated piece positions
+    this.gameState.updatePuzzlePieces(pieces);
+  }
+
   private showCompletionScreen(): void {
     const stats = this.gameState.stats;
     if (!stats) return;
+
+    // Center the completed puzzle in the view
+    this.centerCompletedPuzzle();
 
     const timeSpan = this.completionOverlay.querySelector('#completion-time') as HTMLElement;
     const piecesSpan = this.completionOverlay.querySelector('#completion-pieces') as HTMLElement;
