@@ -26,8 +26,8 @@ export class GameStateManager {
   // Predefined difficulties
   static readonly DIFFICULTIES: Difficulty[] = [
     { name: 'Easy', rows: 4, cols: 4, totalPieces: 16 },
-    { name: 'Medium', rows: 10, cols: 10, totalPieces: 100 },
-    { name: 'Hard', rows: 16, cols: 16, totalPieces: 250 }
+    { name: 'Medium', rows: 6, cols: 6, totalPieces: 36 },
+    { name: 'Hard', rows: 8, cols: 8, totalPieces: 64 }
   ];
 
   constructor(settings: GameSettings = {

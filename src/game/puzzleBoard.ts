@@ -46,11 +46,11 @@ export class PuzzleBoard {
     this.handlePointerDown(event.x, event.y);
   }
 
-  private onPointerMove(event: PointerEvent): void {
-    // Allow pointer move to be called if we have a selected piece (even if not dragging yet)
-    if (!this.selectedPiece) return;
-    this.handlePointerMove(event.x, event.y);
-  }
+   private onPointerMove(event: PointerEvent): void {
+     // If we have a selected piece, handle potential dragging
+     if (!this.selectedPiece) return;
+     this.handlePointerMove(event.x, event.y);
+   }
 
    private onPointerEnd(event: PointerEvent): void {
      Logger.debug('Pointer end:', event.type);
@@ -71,180 +71,188 @@ export class PuzzleBoard {
     }
   }
 
-  private handlePointerDown(x: number, y: number): void {
-    // Store initial pointer position
-    this.pointerDownPos = { x, y };
-    this.hasMovedBeyondThreshold = false;
+   private handlePointerDown(x: number, y: number): void {
+     // Find all pieces under cursor, prioritizing smaller clusters
+     let candidates: { piece: PuzzlePiece; groupSize: number }[] = [];
 
-    // Find all pieces under cursor, prioritizing smaller clusters
-    let candidates: { piece: PuzzlePiece; groupSize: number }[] = [];
+     // Iterate from top to bottom (back to front in array)
+     for (let i = this.pieces.length - 1; i >= 0; i--) {
+       const piece = this.pieces[i];
+       if (!piece.isLocked && piece.containsPoint(x, y)) {
+         const groupSize = this.getAllPiecesInGroup(piece).length;
+         candidates.push({ piece, groupSize });
+       }
+     }
 
-    // Iterate from top to bottom (back to front in array)
-    for (let i = this.pieces.length - 1; i >= 0; i--) {
-      const piece = this.pieces[i];
-      if (!piece.isLocked && piece.containsPoint(x, y)) {
-        const groupSize = this.getAllPiecesInGroup(piece).length;
-        candidates.push({ piece, groupSize });
-      }
-    }
+     if (candidates.length > 0) {
+       // Select the piece from the smallest cluster (prioritize smaller groups)
+       candidates.sort((a, b) => a.groupSize - b.groupSize);
+       const selectedCandidate = candidates[0];
+       const newSelected = selectedCandidate.piece;
 
-    if (candidates.length > 0) {
-      // Select the piece from the smallest cluster (prioritize smaller groups)
-      candidates.sort((a, b) => a.groupSize - b.groupSize);
-      const selectedCandidate = candidates[0];
-      const selectedPiece = selectedCandidate.piece;
+       if (this.selectedPiece === newSelected) {
+         // Clicking selected piece deselects it
+         this.selectedPiece = null;
+       } else {
+         // Select new piece
+         this.selectedPiece = newSelected;
+         this.bringToFront(this.selectedPiece);
 
-      // Bring the selected group to the front immediately upon selection
-      this.bringToFront(selectedPiece);
+         // Set drag offset relative to the selected piece
+         this.selectedPiece.dragOffset = {
+           x: x - selectedCandidate.piece.x,
+           y: y - selectedCandidate.piece.y
+         };
 
-      // Reset drag state for the selected group
-      this.isDragging = false;
-      this.selectedPiece = selectedPiece; // Keep track of initially clicked piece
+         Logger.debug(`Selected piece ${selectedCandidate.piece.id} from cluster of ${selectedCandidate.groupSize} pieces`);
+       }
+     } else {
+       // Clicked empty space, deselect any selected piece
+       this.selectedPiece = null;
+     }
 
-      // Set drag offset relative to the initially clicked piece
-      this.selectedPiece.dragOffset = {
-        x: x - selectedPiece.x,
-        y: y - selectedPiece.y
-      };
+     // Reset drag state
+     this.isDragging = false;
+     this.hasMovedBeyondThreshold = false;
+     this.pointerDownPos = { x, y };
+   }
 
-      Logger.debug(`Selected piece ${selectedPiece.id} from cluster of ${selectedCandidate.groupSize} pieces`);
-    }
-  }
+   private handlePointerMove(x: number, y: number): void {
+     if (!this.selectedPiece) return;
 
-  private handlePointerMove(x: number, y: number): void {
-    if (!this.selectedPiece) return;
-
-    // Check if we've moved beyond the drag threshold
-    if (!this.hasMovedBeyondThreshold && this.pointerDownPos) {
-      const distance = Math.sqrt(
-        Math.pow(x - this.pointerDownPos.x, 2) + 
-        Math.pow(y - this.pointerDownPos.y, 2)
-      );
-      
+     // Check if we've moved beyond the drag threshold to start dragging
+     if (!this.hasMovedBeyondThreshold && this.pointerDownPos) {
+       const distance = Math.sqrt(
+         Math.pow(x - this.pointerDownPos.x, 2) + 
+         Math.pow(y - this.pointerDownPos.y, 2)
+       );
+       
        if (distance > APP_CONFIG.SNAPPING.DRAG_THRESHOLD) {
-        // Start dragging
-        this.hasMovedBeyondThreshold = true;
-        this.isDragging = true;
-        this.selectedPiece.isDragging = true;
-        
-        // Bring entire group to front
-        this.bringToFront(this.selectedPiece); // This now handles the whole group
-        
-        this.soundManager?.play('pickup');
-      }
-    }
+         // Start dragging
+         this.hasMovedBeyondThreshold = true;
+         this.isDragging = true;
+         this.selectedPiece.isDragging = true;
+         
+         // Bring entire group to front
+         this.bringToFront(this.selectedPiece);
+         
+         this.soundManager?.play('pickup');
+       }
+     }
 
-    // Only move pieces if we've started dragging
-    if (this.isDragging && this.selectedPiece) {
-      // Calculate the delta movement
-      const newX = x - this.selectedPiece.dragOffset.x;
-      const newY = y - this.selectedPiece.dragOffset.y;
-      const deltaX = newX - this.selectedPiece.x;
-      const deltaY = newY - this.selectedPiece.y;
+     // Only move pieces if we've started dragging
+     if (this.isDragging && this.selectedPiece) {
+       // Calculate the delta movement
+       const newX = x - this.selectedPiece.dragOffset.x;
+       const newY = y - this.selectedPiece.dragOffset.y;
+       const deltaX = newX - this.selectedPiece.x;
+       const deltaY = newY - this.selectedPiece.y;
 
-      // Move the selected piece
-      this.selectedPiece.x = newX;
-      this.selectedPiece.y = newY;
+       // Move the selected piece
+       this.selectedPiece.x = newX;
+       this.selectedPiece.y = newY;
 
-      // Move all connected pieces in the group
-      const group = this.getAllPiecesInGroup(this.selectedPiece);
-      for (const groupPiece of group) {
-        if (groupPiece.id !== this.selectedPiece.id) {
-          groupPiece.x += deltaX;
-          groupPiece.y += deltaY;
-        }
-      }
+       // Move all connected pieces in the group
+       const group = this.getAllPiecesInGroup(this.selectedPiece);
+       for (const groupPiece of group) {
+         if (groupPiece.id !== this.selectedPiece.id) {
+           groupPiece.x += deltaX;
+           groupPiece.y += deltaY;
+         }
+       }
 
-      this.render();
-    }
-  }
+       this.render();
+     }
+   }
 
-  private handlePointerUp(): void {
-    if (this.selectedPiece) {
-      this.selectedPiece.isDragging = false;
-      
-      // Only process drop if we actually dragged (moved beyond threshold)
-      if (this.hasMovedBeyondThreshold) {
-        // Check for snapping - consider all pieces in the dragged group
-        const draggedGroup = this.getAllPiecesInGroup(this.selectedPiece);
-        let bestSnap: {
-          snapTarget: { targetPiece: PuzzlePiece; snapX: number; snapY: number; connection: any; distance: number };
-          groupPiece: PuzzlePiece;
-        } | null = null;
+   private handlePointerUp(): void {
+     if (this.selectedPiece) {
+       this.selectedPiece.isDragging = false;
+       
+       // Only process drop if we actually dragged (moved beyond threshold)
+       if (this.hasMovedBeyondThreshold) {
+         // Check for snapping - consider all pieces in the dragged group
+         const draggedGroup = this.getAllPiecesInGroup(this.selectedPiece);
+         let bestSnap: {
+           snapTarget: { targetPiece: PuzzlePiece; snapX: number; snapY: number; connection: any; distance: number };
+           groupPiece: PuzzlePiece;
+         } | null = null;
 
-        // Check snapping for each piece in the dragged group
-        for (const groupPiece of draggedGroup) {
-          const snapTarget = SnapDetector.findSnapTarget(
-            groupPiece,
-            this.pieces,
-            groupPiece.x,
-            groupPiece.y
-          );
+         // Check snapping for each piece in the dragged group
+         for (const groupPiece of draggedGroup) {
+           const snapTarget = SnapDetector.findSnapTarget(
+             groupPiece,
+             this.pieces,
+             groupPiece.x,
+             groupPiece.y
+           );
 
-          Logger.debug(`Checking snap for piece ${groupPiece.id}: ${snapTarget ? 'found target' : 'no target'}`);
-          if (snapTarget) {
-            Logger.debug(`  Target: piece ${snapTarget.targetPiece.id}, distance: ${snapTarget.distance.toFixed(2)}`);
-          }
+           Logger.debug(`Checking snap for piece ${groupPiece.id}: ${snapTarget ? 'found target' : 'no target'}`);
+           if (snapTarget) {
+             Logger.debug(`  Target: piece ${snapTarget.targetPiece.id}, distance: ${snapTarget.distance.toFixed(2)}`);
+           }
 
-          if (snapTarget && (!bestSnap || snapTarget.distance < bestSnap.snapTarget.distance)) {
-            bestSnap = { snapTarget, groupPiece };
-          }
-        }
+           if (snapTarget && (!bestSnap || snapTarget.distance < bestSnap.snapTarget.distance)) {
+             bestSnap = { snapTarget, groupPiece };
+           }
+         }
 
-        if (bestSnap) {
-          const { snapTarget, groupPiece } = bestSnap;
+         if (bestSnap) {
+           const { snapTarget, groupPiece } = bestSnap;
 
-          // Calculate the delta needed to snap the entire group
-          const deltaX = snapTarget.snapX - groupPiece.x;
-          const deltaY = snapTarget.snapY - groupPiece.y;
+           // Calculate the delta needed to snap the entire group
+           const deltaX = snapTarget.snapX - groupPiece.x;
+           const deltaY = snapTarget.snapY - groupPiece.y;
 
-          // Move the entire dragged group to the snap position
-          for (const piece of draggedGroup) {
-            piece.x += deltaX;
-            piece.y += deltaY;
-          }
-          
-          // Connect the pieces
-          groupPiece.connectedPieces.add(snapTarget.targetPiece.id);
-          snapTarget.targetPiece.connectedPieces.add(groupPiece.id);
-          
-          // Merge groups if target piece is already in a group
-          this.mergeGroups(groupPiece, snapTarget.targetPiece);
-          
-          Logger.debug(
-            `Snapped group piece ${groupPiece.id} to ${snapTarget.targetPiece.id} on edge ${snapTarget.connection.edge} (distance: ${snapTarget.distance.toFixed(2)})`
-          );
-          this.soundManager?.play('snap');
+           // Move the entire dragged group to the snap position
+           for (const piece of draggedGroup) {
+             piece.x += deltaX;
+             piece.y += deltaY;
+           }
+           
+           // Connect the pieces
+           groupPiece.connectedPieces.add(snapTarget.targetPiece.id);
+           snapTarget.targetPiece.connectedPieces.add(groupPiece.id);
+           
+           // Merge groups if target piece is already in a group
+           this.mergeGroups(groupPiece, snapTarget.targetPiece);
+           
+           Logger.debug(
+             `Snapped group piece ${groupPiece.id} to ${snapTarget.targetPiece.id} on edge ${snapTarget.connection.edge} (distance: ${snapTarget.distance.toFixed(2)})`
+           );
+           this.soundManager?.play('snap');
 
-          // Check if the entire snapped group is correctly placed and lock all pieces
-          const snappedGroup = this.getAllPiecesInGroup(this.selectedPiece);
-          if (this.isGroupCorrectlyPlaced(snappedGroup)) {
-            for (const piece of snappedGroup) {
-              piece.isLocked = true;
-              Logger.info(`Piece ${piece.id} locked in place!`);
-            }
-          }
-        } else {
-          this.soundManager?.play('drop');
-        }
+           // Check if the entire snapped group is correctly placed and lock all pieces
+           const snappedGroup = this.getAllPiecesInGroup(this.selectedPiece);
+           if (this.isGroupCorrectlyPlaced(snappedGroup)) {
+             for (const piece of snappedGroup) {
+               piece.isLocked = true;
+               Logger.info(`Piece ${piece.id} locked in place!`);
+             }
+           }
+         } else {
+           this.soundManager?.play('drop');
+         }
 
-        // Update progress
-        this.updateProgress();
-        this.render();
+         // Update progress
+         this.updateProgress();
+         this.render();
 
-        // Notify that pieces have changed
-        this.onPiecesChanged?.(this.pieces);
-      }
-      // If we didn't move beyond threshold, it was just a click - do nothing
-    }
+         // Deselect after drag operation
+         this.selectedPiece = null;
+       }
+       // If we didn't move beyond threshold, it was just a click - keep piece selected
+     }
+     
      // Always check for correctly placed pieces after any interaction
      this.checkAndLockCorrectlyPlacedPieces();
      this.updateProgress();
-     this.selectedPiece = null;
+     
+     // Reset drag state
      this.isDragging = false;
      this.pointerDownPos = null;
      this.hasMovedBeyondThreshold = false;
-  }
+   }
 
   private bringToFront(piece: PuzzlePiece): void {
     // If piece is part of a group, bring entire group to front

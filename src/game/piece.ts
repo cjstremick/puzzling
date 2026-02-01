@@ -55,9 +55,27 @@ export class PuzzlePiece {
 
   // Check if point is inside piece (for mouse interaction)
   containsPoint(x: number, y: number): boolean {
-    const bounds = this.getBounds();
-    return x >= bounds.x && x <= bounds.x + bounds.width &&
-           y >= bounds.y && y <= bounds.y + bounds.height;
+    if (Math.abs(this.rotation % 180) === 0) {
+      // No rotation or 180 degrees - use simple bounds
+      return x >= this.x && x <= this.x + this.width &&
+             y >= this.y && y <= this.y + this.height;
+    } else {
+      // 90 or 270 degrees rotation - check if point is within rotated bounds
+      const centerX = this.x + this.width / 2;
+      const centerY = this.y + this.height / 2;
+      
+      // Transform point to piece's local coordinates (unrotated)
+      const dx = x - centerX;
+      const dy = y - centerY;
+      const cos = Math.cos(-this.rotation * Math.PI / 180);
+      const sin = Math.sin(-this.rotation * Math.PI / 180);
+      const localX = dx * cos - dy * sin;
+      const localY = dx * sin + dy * cos;
+      
+      // Check if transformed point is within original bounds
+      return localX >= -this.width / 2 && localX <= this.width / 2 &&
+             localY >= -this.height / 2 && localY <= this.height / 2;
+    }
   }
 
   // Flip the piece (face up/down)
