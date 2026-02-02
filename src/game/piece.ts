@@ -1,4 +1,4 @@
-// src/game/piece.ts - Individual puzzle piece class
+import type { SerializedPuzzlePiece } from './types';
 
 export interface PieceConnection {
   edge: 'top' | 'right' | 'bottom' | 'left';
@@ -23,6 +23,9 @@ export class PuzzlePiece {
   public originalPosition: { x: number; y: number };
   public connectedPieces: Set<number> = new Set(); // IDs of pieces snapped together
   public groupId: number | null = null; // ID of the group this piece belongs to
+
+  private cachedCanvas?: OffscreenCanvas | HTMLCanvasElement;
+  private cacheValid: boolean = false;
 
   constructor(
     id: number,
@@ -81,13 +84,20 @@ export class PuzzlePiece {
   // Flip the piece (face up/down)
   flip(): void {
     this.faceUp = !this.faceUp;
+    this.invalidateCache();
   }
 
   // Rotate the piece (only when face up)
   rotate90(): void {
     if (this.faceUp) {
       this.rotation = (this.rotation + 90) % 360;
+      this.invalidateCache();
     }
+  }
+
+  // Invalidate the render cache when piece state changes
+  private invalidateCache(): void {
+    this.cacheValid = false;
   }
 
   // Draw the piece on canvas
@@ -99,6 +109,21 @@ export class PuzzlePiece {
     ctx.rotate((this.rotation * Math.PI) / 180);
     ctx.translate(-this.width / 2, -this.height / 2);
 
+    // Use cached rendering if available and valid
+    if (this.cacheValid && this.cachedCanvas) {
+      ctx.drawImage(this.cachedCanvas, 0, 0, this.width, this.height);
+    } else {
+      // Render piece content
+      this.renderPieceContent(ctx);
+      // Cache the rendering for future use
+      this.cacheRendering();
+    }
+
+    ctx.restore();
+  }
+
+  // Render the piece content (image or placeholder)
+  private renderPieceContent(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D): void {
     if (this.imageData && this.faceUp) {
       // Draw image data - putImageData doesn't respect transforms, so use a temporary canvas
       const tempCanvas = document.createElement('canvas');
@@ -106,7 +131,7 @@ export class PuzzlePiece {
       tempCanvas.height = this.imageData.height;
       const tempCtx = tempCanvas.getContext('2d')!;
       tempCtx.putImageData(this.imageData, 0, 0);
-      
+
       // Draw the temp canvas as an image (which respects transforms)
       ctx.drawImage(tempCanvas, 0, 0, this.width, this.height);
     } else {
@@ -117,8 +142,29 @@ export class PuzzlePiece {
       ctx.lineWidth = 1.5;
       ctx.strokeRect(0, 0, this.width, this.height);
     }
+  }
 
-    ctx.restore();
+  // Cache the piece rendering for performance
+  private cacheRendering(): void {
+    // Create or reuse offscreen canvas
+    if (!this.cachedCanvas) {
+      try {
+        // Try OffscreenCanvas first (better performance)
+        this.cachedCanvas = new OffscreenCanvas(this.width, this.height);
+      } catch {
+        // Fallback to regular canvas
+        this.cachedCanvas = document.createElement('canvas');
+        this.cachedCanvas.width = this.width;
+        this.cachedCanvas.height = this.height;
+      }
+    }
+
+    const cacheCtx = this.cachedCanvas.getContext('2d')!;
+    cacheCtx.clearRect(0, 0, this.width, this.height);
+
+    // Render piece content to cache
+    this.renderPieceContent(cacheCtx);
+    this.cacheValid = true;
   }
 
   // Clone piece for state management
@@ -133,7 +179,7 @@ export class PuzzlePiece {
   }
 
   // Serialize piece for persistence
-  toJSON(): any {
+  toJSON(): SerializedPuzzlePiece {
     return {
       id: this.id,
       x: this.x,

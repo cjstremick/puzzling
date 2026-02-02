@@ -2,11 +2,14 @@
 
 import { PuzzlePiece } from './piece';
 import type { PuzzleConfig } from './types';
+import type { PieceConnection } from './piece';
 import { PuzzleGenerator } from './puzzleGenerator';
 import { TouchHandler, SnapDetector, type PointerEvent } from '../utils/touch';
 import { APP_CONFIG } from '../config/appConfig';
 import { SoundManager } from '../audio/soundManager';
 import { Logger } from '../utils/logger';
+import { eventBus } from '../utils/eventEmitter';
+import { GameLoop } from '../utils/gameLoop';
 
 export class PuzzleBoard {
   private canvas: HTMLCanvasElement;
@@ -20,13 +23,22 @@ export class PuzzleBoard {
   private onProgressUpdate?: (placed: number, total: number) => void;
   private onPiecesChanged?: (pieces: PuzzlePiece[]) => void;
   private soundManager?: SoundManager;
+  private gameLoop: GameLoop;
+  private needsRender = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.touchHandler = new TouchHandler(canvas);
 
+    // Initialize game loop
+    this.gameLoop = new GameLoop({
+      update: this.update.bind(this),
+      render: this.render.bind(this)
+    });
+
     this.setupEventListeners();
+    this.gameLoop.start();
   }
 
   setSoundManager(manager: SoundManager): void {
@@ -65,7 +77,7 @@ export class PuzzleBoard {
         // Get the entire connected group and rotate it as a unit
         const group = this.getAllPiecesInGroup(piece);
         this.rotateGroup(group);
-        this.render();
+        this.needsRender = true;
         break;
       }
     }
@@ -90,13 +102,15 @@ export class PuzzleBoard {
        const selectedCandidate = candidates[0];
        const newSelected = selectedCandidate.piece;
 
-       if (this.selectedPiece === newSelected) {
-         // Clicking selected piece deselects it
-         this.selectedPiece = null;
-       } else {
-         // Select new piece
-         this.selectedPiece = newSelected;
-         this.bringToFront(this.selectedPiece);
+        if (this.selectedPiece === newSelected) {
+          // Clicking selected piece deselects it
+          eventBus.emit('piece:deselected', {});
+          this.selectedPiece = null;
+        } else {
+          // Select new piece
+          this.selectedPiece = newSelected;
+          this.bringToFront(this.selectedPiece);
+          eventBus.emit('piece:selected', { piece: this.selectedPiece });
 
          // Set drag offset relative to the selected piece
          this.selectedPiece.dragOffset = {
@@ -148,20 +162,21 @@ export class PuzzleBoard {
        const deltaX = newX - this.selectedPiece.x;
        const deltaY = newY - this.selectedPiece.y;
 
-       // Move the selected piece
-       this.selectedPiece.x = newX;
-       this.selectedPiece.y = newY;
+        // Move the selected piece
+        this.selectedPiece.x = newX;
+        this.selectedPiece.y = newY;
 
-       // Move all connected pieces in the group
-       const group = this.getAllPiecesInGroup(this.selectedPiece);
-       for (const groupPiece of group) {
-         if (groupPiece.id !== this.selectedPiece.id) {
-           groupPiece.x += deltaX;
-           groupPiece.y += deltaY;
-         }
-       }
+        // Move all connected pieces in the group
+        const group = this.getAllPiecesInGroup(this.selectedPiece);
+        for (const groupPiece of group) {
+          if (groupPiece.id !== this.selectedPiece.id) {
+            groupPiece.x += deltaX;
+            groupPiece.y += deltaY;
+          }
+        }
 
-       this.render();
+        eventBus.emit('piece:moved', { piece: this.selectedPiece, x: newX, y: newY });
+        this.needsRender = true;
      }
    }
 
@@ -173,10 +188,10 @@ export class PuzzleBoard {
        if (this.hasMovedBeyondThreshold) {
          // Check for snapping - consider all pieces in the dragged group
          const draggedGroup = this.getAllPiecesInGroup(this.selectedPiece);
-         let bestSnap: {
-           snapTarget: { targetPiece: PuzzlePiece; snapX: number; snapY: number; connection: any; distance: number };
-           groupPiece: PuzzlePiece;
-         } | null = null;
+          let bestSnap: {
+            snapTarget: { targetPiece: PuzzlePiece; snapX: number; snapY: number; connection: PieceConnection; distance: number };
+            groupPiece: PuzzlePiece;
+          } | null = null;
 
          // Check snapping for each piece in the dragged group
          for (const groupPiece of draggedGroup) {
@@ -210,17 +225,18 @@ export class PuzzleBoard {
              piece.y += deltaY;
            }
            
-           // Connect the pieces
-           groupPiece.connectedPieces.add(snapTarget.targetPiece.id);
-           snapTarget.targetPiece.connectedPieces.add(groupPiece.id);
-           
-           // Merge groups if target piece is already in a group
-           this.mergeGroups(groupPiece, snapTarget.targetPiece);
-           
-           Logger.debug(
-             `Snapped group piece ${groupPiece.id} to ${snapTarget.targetPiece.id} on edge ${snapTarget.connection.edge} (distance: ${snapTarget.distance.toFixed(2)})`
-           );
-           this.soundManager?.play('snap');
+            // Connect the pieces
+            groupPiece.connectedPieces.add(snapTarget.targetPiece.id);
+            snapTarget.targetPiece.connectedPieces.add(groupPiece.id);
+            
+            // Merge groups if target piece is already in a group
+            this.mergeGroups(groupPiece, snapTarget.targetPiece);
+            
+            Logger.debug(
+              `Snapped group piece ${groupPiece.id} to ${snapTarget.targetPiece.id} on edge ${snapTarget.connection.edge} (distance: ${snapTarget.distance.toFixed(2)})`
+            );
+            eventBus.emit('piece:snapped', { piece: groupPiece, targetPiece: snapTarget.targetPiece });
+            this.soundManager?.play('snap');
 
            // Check if the entire snapped group is correctly placed and lock all pieces
            const snappedGroup = this.getAllPiecesInGroup(this.selectedPiece);
@@ -236,7 +252,7 @@ export class PuzzleBoard {
 
          // Update progress
          this.updateProgress();
-         this.render();
+         this.needsRender = true;
 
          // Deselect after drag operation
          this.selectedPiece = null;
@@ -339,8 +355,8 @@ export class PuzzleBoard {
         canvasHeight: config.canvasHeight
       };
 
-       this.pieces = await PuzzleGenerator.generatePuzzle(image, puzzleConfig);
-       this.render();
+        this.pieces = await PuzzleGenerator.generatePuzzle(image, puzzleConfig);
+        this.needsRender = true;
        } catch (error) {
          Logger.error('Failed to load puzzle:', error instanceof Error ? error : undefined, error);
          // ErrorHandler.handleError(error instanceof Error ? error : new Error(String(error)), 'PuzzleBoard.loadPuzzle');
@@ -348,7 +364,15 @@ export class PuzzleBoard {
        }
    }
 
+  private update(_deltaTime: number): void {
+    // Update logic here (currently empty as the game is event-driven)
+    // Could be used for animations, physics, etc. in the future
+  }
+
   render(): void {
+    // Only render if something has changed
+    if (!this.needsRender) return;
+
     // Clear canvas
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
@@ -365,12 +389,15 @@ export class PuzzleBoard {
         piece.draw(this.ctx);
       }
     }
+
+    this.needsRender = false;
   }
 
   // Public methods for external control
   flipSelectedPiece(): void {
     if (this.selectedPiece) {
       this.selectedPiece.flip();
+      eventBus.emit('piece:flipped', { piece: this.selectedPiece });
       this.render();
       // Notify that pieces have changed
       this.onPiecesChanged?.(this.pieces);
@@ -380,10 +407,16 @@ export class PuzzleBoard {
   rotateSelectedPiece(): void {
     if (this.selectedPiece && this.selectedPiece.faceUp) {
       this.selectedPiece.rotate90();
+      eventBus.emit('piece:rotated', { piece: this.selectedPiece });
       this.render();
       // Notify that pieces have changed
       this.onPiecesChanged?.(this.pieces);
     }
+  }
+
+  clearSelection(): void {
+    this.selectedPiece = null;
+    this.render();
   }
 
   setProgressHandler(handler: (placed: number, total: number) => void): void {
@@ -403,6 +436,11 @@ export class PuzzleBoard {
   // Restore pieces from saved state
   restorePieces(pieces: PuzzlePiece[]): void {
     this.pieces = pieces;
+  }
+
+  // Force a render on the next frame (for external triggers)
+  forceRender(): void {
+    this.needsRender = true;
   }
 
   // Get current pieces (for saving state)
@@ -499,5 +537,42 @@ export class PuzzleBoard {
         Logger.info(`Piece ${piece.id} locked in place!`);
       }
     }
+  }
+
+  // Clean up resources and event listeners
+  destroy(): void {
+    // Clean up event listeners
+    this.cleanupEventListeners();
+
+    // Clear piece caches to free memory
+    for (const piece of this.pieces) {
+      // Clear cached canvas if it exists
+      if ((piece as any).cachedCanvas) {
+        (piece as any).cachedCanvas = undefined;
+      }
+    }
+
+    // Clear pieces array
+    this.pieces = [];
+
+    // Clear canvas context
+    if (this.ctx) {
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+
+    Logger.debug('PuzzleBoard destroyed and memory cleaned up');
+  }
+
+  // Clean up event listeners (called when destroying or re-initializing)
+  private cleanupEventListeners(): void {
+    // Remove all event listeners from canvas
+    // Note: Since we don't store listener references, we clear by cloning and replacing
+    const newCanvas = this.canvas.cloneNode() as HTMLCanvasElement;
+    this.canvas.parentNode?.replaceChild(newCanvas, this.canvas);
+    this.canvas = newCanvas;
+    this.ctx = this.canvas.getContext('2d')!;
+
+    // Re-setup event listeners if needed (not called during destroy)
+    // this.setupEventListeners();
   }
 }

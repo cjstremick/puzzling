@@ -46,13 +46,15 @@ export class Validators {
     return query.trim().replace(/[<>]/g, '').slice(0, 100);
   }
 
-  static validatePointerEvent(event: any): event is { x: number; y: number; type: string; pointerId: number; isTouch: boolean } {
+  static validatePointerEvent(event: unknown): event is { x: number; y: number; type: string; pointerId: number; isTouch: boolean } {
     return (
-      typeof event.x === 'number' &&
-      typeof event.y === 'number' &&
-      typeof event.type === 'string' &&
-      typeof event.pointerId === 'number' &&
-      typeof event.isTouch === 'boolean'
+      event !== null &&
+      typeof event === 'object' &&
+      'x' in event && typeof (event as any).x === 'number' &&
+      'y' in event && typeof (event as any).y === 'number' &&
+      'type' in event && typeof (event as any).type === 'string' &&
+      'pointerId' in event && typeof (event as any).pointerId === 'number' &&
+      'isTouch' in event && typeof (event as any).isTouch === 'boolean'
     );
   }
 }

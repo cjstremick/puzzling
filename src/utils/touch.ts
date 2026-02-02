@@ -1,6 +1,7 @@
 // src/utils/touch.ts - Touch and mouse event handling utilities
 
 import { APP_CONFIG } from '../config/appConfig';
+import { eventBus } from './eventEmitter';
 import type { PieceConnection, PuzzlePiece } from '../game/piece';
 
 export interface PointerEvent {
@@ -17,9 +18,31 @@ export class TouchHandler {
   private tapCount: number = 0;
   private readonly DOUBLE_TAP_DELAY = APP_CONFIG.TIMING.DOUBLE_TAP_DELAY;
   private readonly LONG_PRESS_DELAY = APP_CONFIG.TIMING.LONG_PRESS_DELAY;
+  private readonly POINTER_MOVE_DEBOUNCE = 16; // ~60fps debounce for move events
+
+  // Debounce timers for different event types
+  private pointerMoveTimeout: number | null = null;
+  private pointerStartTimeout: number | null = null;
+  private pointerEndTimeout: number | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
+  }
+
+  private debounce<T extends (...args: any[]) => void>(
+    func: T,
+    delay: number,
+    timeoutRef: 'pointerMoveTimeout' | 'pointerStartTimeout' | 'pointerEndTimeout'
+  ): T {
+    return ((...args: Parameters<T>) => {
+      if (this[timeoutRef]) {
+        clearTimeout(this[timeoutRef]);
+      }
+      this[timeoutRef] = window.setTimeout(() => {
+        func(...args);
+        this[timeoutRef] = null;
+      }, delay);
+    }) as T;
   }
 
   // Convert mouse/touch events to unified pointer events
@@ -32,11 +55,17 @@ export class TouchHandler {
   ): void {
     let longPressTimer: number | null = null;
 
+    // Create debounced versions of callbacks
+    const debouncedPointerMove = this.debounce(onPointerMove, this.POINTER_MOVE_DEBOUNCE, 'pointerMoveTimeout');
+    const debouncedPointerStart = this.debounce(onPointerStart, 0, 'pointerStartTimeout'); // No debounce for start
+    const debouncedPointerEnd = this.debounce(onPointerEnd, 0, 'pointerEndTimeout'); // No debounce for end
+
     // Mouse events
     this.canvas.addEventListener('mousedown', (e) => {
       e.preventDefault();
       const event = this.createPointerEvent(e.clientX, e.clientY, 'start', 0, false);
-      onPointerStart(event);
+      eventBus.emit('input:pointer-down', { x: event.x, y: event.y });
+      debouncedPointerStart(event);
       this.handleTapDetection(e.clientX, e.clientY, onDoubleTap);
       longPressTimer = window.setTimeout(() => {
         if (onLongPress) onLongPress(e.clientX, e.clientY);
@@ -49,7 +78,8 @@ export class TouchHandler {
         longPressTimer = null;
       }
       const event = this.createPointerEvent(e.clientX, e.clientY, 'move', 0, false);
-      onPointerMove(event);
+      eventBus.emit('input:pointer-move', { x: event.x, y: event.y });
+      debouncedPointerMove(event);
     });
 
     this.canvas.addEventListener('mouseup', (e) => {
@@ -58,7 +88,8 @@ export class TouchHandler {
         longPressTimer = null;
       }
       const event = this.createPointerEvent(e.clientX, e.clientY, 'end', 0, false);
-      onPointerEnd(event);
+      eventBus.emit('input:pointer-up', { x: event.x, y: event.y });
+      debouncedPointerEnd(event);
     });
 
     // Touch events
@@ -67,7 +98,8 @@ export class TouchHandler {
       if (e.touches.length === 1) {
         const touch = e.touches[0];
         const event = this.createPointerEvent(touch.clientX, touch.clientY, 'start', touch.identifier, true);
-        onPointerStart(event);
+        eventBus.emit('input:pointer-down', { x: event.x, y: event.y });
+        debouncedPointerStart(event);
         this.handleTapDetection(touch.clientX, touch.clientY, onDoubleTap);
         longPressTimer = window.setTimeout(() => {
           if (onLongPress) onLongPress(touch.clientX, touch.clientY);
@@ -84,7 +116,8 @@ export class TouchHandler {
       if (e.touches.length === 1) {
         const touch = e.touches[0];
         const event = this.createPointerEvent(touch.clientX, touch.clientY, 'move', touch.identifier, true);
-        onPointerMove(event);
+        eventBus.emit('input:pointer-move', { x: event.x, y: event.y });
+        debouncedPointerMove(event);
       }
     });
 
@@ -97,12 +130,29 @@ export class TouchHandler {
       if (e.changedTouches.length === 1) {
         const touch = e.changedTouches[0];
         const event = this.createPointerEvent(touch.clientX, touch.clientY, 'end', touch.identifier, true);
-        onPointerEnd(event);
+        eventBus.emit('input:pointer-up', { x: event.x, y: event.y });
+        debouncedPointerEnd(event);
       }
     });
 
     // Prevent context menu on right click
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  // Cleanup method to clear pending timeouts
+  destroy(): void {
+    if (this.pointerMoveTimeout) {
+      clearTimeout(this.pointerMoveTimeout);
+      this.pointerMoveTimeout = null;
+    }
+    if (this.pointerStartTimeout) {
+      clearTimeout(this.pointerStartTimeout);
+      this.pointerStartTimeout = null;
+    }
+    if (this.pointerEndTimeout) {
+      clearTimeout(this.pointerEndTimeout);
+      this.pointerEndTimeout = null;
+    }
   }
 
   private createPointerEvent(clientX: number, clientY: number, type: PointerEvent['type'], pointerId: number, isTouch: boolean): PointerEvent {
@@ -129,6 +179,7 @@ export class TouchHandler {
     if (timeDiff < this.DOUBLE_TAP_DELAY) {
       this.tapCount++;
       if (this.tapCount === 2 && onDoubleTap) {
+        eventBus.emit('input:double-tap', { x, y });
         onDoubleTap(x, y);
         this.tapCount = 0;
       }

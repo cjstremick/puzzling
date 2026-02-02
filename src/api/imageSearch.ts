@@ -66,7 +66,7 @@ export class ImageSearchAPI {
       const data: PexelsResponse = await response.json();
       Logger.debug(`Found ${data.total_results} total results, ${data.photos.length} on this page`);
       return data;
-    }, 'searching photos', this.getMockData(sanitizedQuery));
+    }, ErrorHandler.networkContext('searching photos'), this.getMockData(sanitizedQuery));
 
     return result || this.getMockData(sanitizedQuery);
   }

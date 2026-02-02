@@ -49,6 +49,18 @@ npx tsc --noEmit
 ```
 Runs TypeScript compiler in check-only mode to validate types without emitting files
 
+### Linting
+```bash
+npm run lint
+```
+Runs ESLint to check for code quality issues across TypeScript files
+
+### Lint Fix
+```bash
+npm run lint:fix
+```
+Automatically fixes auto-fixable ESLint issues
+
 ## Testing
 
 Currently, there is no test framework configured. To add testing:

@@ -5,7 +5,6 @@ import { SearchPanel } from './ui/searchPanel';
 import { PuzzleBoard } from './game/puzzleBoard';
 import { GameStateManager } from './game/gameState';
 import { StatusBar } from './ui/statusBar';
-import { ReferencePanel } from './ui/referencePanel';
 import { SoundManager } from './audio/soundManager';
 import { PuzzleGenerator } from './game/puzzleGenerator';
 import type { PexelsPhoto } from './api/imageSearch';
@@ -18,7 +17,6 @@ export class App {
   private puzzleBoard: PuzzleBoard;
   private gameState: GameStateManager;
   private statusBar: StatusBar;
-  private referencePanel: ReferencePanel;
   private completionOverlay: HTMLElement;
   private selectedPhoto: PexelsPhoto | null = null;
   private soundManager: SoundManager;
@@ -33,7 +31,6 @@ export class App {
     this.gameState = new GameStateManager();
     this.soundManager = new SoundManager();
     this.statusBar = new StatusBar(this.gameState);
-    this.referencePanel = new ReferencePanel(this.gameState);
      this.puzzleBoard = new PuzzleBoard(this.canvas);
      this.puzzleBoard.setSoundManager(this.soundManager);
      this.puzzleBoard.setProgressHandler((connected, _total) => {
@@ -72,7 +69,6 @@ export class App {
 
         // Update UI components with restored photo
         this.statusBar.setPhoto(savedState.photo);
-        this.referencePanel.setPhoto(savedState.photo);
 
         try {
           // Recreate the image and puzzle pieces
@@ -97,7 +93,7 @@ export class App {
           this.canvas.width = savedState.canvasWidth;
           this.canvas.height = savedState.canvasHeight;
 
-          this.puzzleBoard.render();
+          this.puzzleBoard.forceRender();
 
           console.log(`Restored puzzle: ${restoredPieces.length} pieces, ${this.gameState.currentState} state`);
         } catch (error) {
@@ -241,21 +237,23 @@ export class App {
 
   private centerCompletedPuzzle(): void {
     const pieces = this.puzzleBoard.getPieces();
-    const lockedPieces = pieces.filter(piece => piece.isLocked);
 
-    if (lockedPieces.length === 0) return;
+    if (pieces.length === 0) return;
 
-    // Calculate the average center of all locked pieces
+    // Clear any selection highlights first
+    this.puzzleBoard.clearSelection();
+
+    // Calculate the average center of all pieces (not just locked ones)
     let totalCenterX = 0;
     let totalCenterY = 0;
 
-    for (const piece of lockedPieces) {
+    for (const piece of pieces) {
       totalCenterX += piece.x + piece.width / 2;
       totalCenterY += piece.y + piece.height / 2;
     }
 
-    const puzzleCenterX = totalCenterX / lockedPieces.length;
-    const puzzleCenterY = totalCenterY / lockedPieces.length;
+    const puzzleCenterX = totalCenterX / pieces.length;
+    const puzzleCenterY = totalCenterY / pieces.length;
 
     // Calculate center of the canvas
     const canvasCenterX = this.canvas.width / 2;
@@ -304,6 +302,69 @@ export class App {
     const duration = 3000;
     const end = Date.now() + duration;
 
+    // Set up periodic bursts every 800ms
+    let burstCount = 0;
+    const maxBursts = 4; // 4 bursts total during 3 seconds
+
+    const burstConfetti = () => {
+      if (burstCount >= maxBursts) return;
+
+      // Alternate burst patterns for variety
+      if (burstCount % 2 === 0) {
+        // Corner bursts
+        confetti({
+          particleCount: 40,
+          angle: 45,
+          spread: 90,
+          origin: { x: 0, y: 0 },
+          zIndex: 4000
+        });
+        confetti({
+          particleCount: 40,
+          angle: 135,
+          spread: 90,
+          origin: { x: 1, y: 0 },
+          zIndex: 4000
+        });
+        confetti({
+          particleCount: 40,
+          angle: 225,
+          spread: 90,
+          origin: { x: 1, y: 1 },
+          zIndex: 4000
+        });
+        confetti({
+          particleCount: 40,
+          angle: 315,
+          spread: 90,
+          origin: { x: 0, y: 1 },
+          zIndex: 4000
+        });
+      } else {
+        // Center bursts with different angles
+        confetti({
+          particleCount: 50,
+          angle: 90,
+          spread: 180,
+          origin: { x: 0.3, y: 0.5 },
+          zIndex: 4000
+        });
+        confetti({
+          particleCount: 50,
+          angle: 270,
+          spread: 180,
+          origin: { x: 0.7, y: 0.5 },
+          zIndex: 4000
+        });
+      }
+
+      burstCount++;
+    };
+
+    // Initial burst
+    burstConfetti();
+
+    // Set up continuous falling and periodic bursts
     const frame = () => {
       confetti({
         particleCount: 3,
@@ -325,9 +386,15 @@ export class App {
       }
     };
 
+    // Start continuous falling
     frame();
 
-    // Burst from corners
+    // Schedule periodic bursts
+    setTimeout(burstConfetti, 800);
+    setTimeout(burstConfetti, 1600);
+    setTimeout(burstConfetti, 2400);
+
+    // Burst from corners (original implementation)
     setTimeout(() => {
       confetti({
         particleCount: 50,
@@ -386,9 +453,13 @@ export class App {
   private async onImageSelected(photo: PexelsPhoto): Promise<void> {
     this.selectedPhoto = photo;
     this.statusBar.setPhoto(photo);
-    this.referencePanel.setPhoto(photo);
 
     try {
+      // Clean up previous puzzle if it exists
+      if (this.puzzleBoard.hasConnectedPieces()) {
+        this.puzzleBoard.destroy();
+      }
+
       // Load puzzle with current difficulty
       const difficulty = this.gameState.settings.difficulty;
       await this.puzzleBoard.loadPuzzle(photo.src.large, {

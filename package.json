@@ -6,10 +6,17 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint:fix": "eslint . --ext ts,tsx --fix",
     "preview": "vite preview"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",
+    "@typescript-eslint/eslint-plugin": "^8.54.0",
+    "@typescript-eslint/parser": "^8.54.0",
+    "eslint": "^9.39.2",
+    "eslint-plugin-import": "^2.32.0",
+    "globals": "^17.3.0",
     "typescript": "~5.9.3",
     "vite": "^7.2.4"
   },

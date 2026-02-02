@@ -304,7 +304,7 @@ export class SearchPanel {
       this.displayResults(allPhotos);
 
     } catch (error) {
-      ErrorHandler.handleError(error instanceof Error ? error : new Error(String(error)), 'SearchPanel.performRandomSearch');
+      ErrorHandler.handleError(error, ErrorHandler.networkContext('SearchPanel.performRandomSearch', 'Random search failed. Please try again.'));
       this.showError('Random search failed. Please try again.');
     } finally {
       this.randomButton.disabled = false;
@@ -337,7 +337,7 @@ export class SearchPanel {
        const shuffled = response.photos.sort(() => Math.random() - 0.5);
         this.displayResults(shuffled.slice(0, 6));
      } catch (error) {
-       ErrorHandler.handleError(error instanceof Error ? error : new Error(String(error)), 'SearchPanel.performSearch');
+       ErrorHandler.handleError(error, ErrorHandler.networkContext('SearchPanel.performSearch', 'Search failed. Please try again.'));
        this.showError('Search failed. Please try again.');
      } finally {
       this.searchButton.disabled = false;

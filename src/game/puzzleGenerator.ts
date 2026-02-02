@@ -2,6 +2,7 @@
 
 import { PuzzlePiece } from './piece';
 import type { PuzzleConfig } from './types';
+import type { PieceConnection } from './piece';
 
 export class PuzzleGenerator {
   // private static readonly PIECE_OVERLAP = 10; // pixels pieces can overlap for snapping - TODO: implement snapping
@@ -52,8 +53,8 @@ export class PuzzleGenerator {
         try {
           const imageData = ctx.getImageData(baseX, baseY, pieceWidth, pieceHeight);
           piece.imageData = imageData;
-        } catch (e) {
-          console.warn('Could not extract image data for piece', pieceId);
+         } catch {
+           console.warn('Could not extract image data for piece', pieceId);
         }
 
         // Set initial face state based on preFlip setting
@@ -175,7 +176,7 @@ export class PuzzleGenerator {
     ctx: CanvasRenderingContext2D,
     width: number,
     height: number,
-    connections: any[]
+    connections: PieceConnection[]
   ): void {
     // This is a simplified implementation
     // In a full implementation, this would use the connection data

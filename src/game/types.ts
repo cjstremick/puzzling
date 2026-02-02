@@ -58,18 +58,21 @@ export interface ISoundManager {
   play(soundKey: string): void;
 }
 
-export interface IGameStateManager {
-  get currentState(): GameState;
-  get settings(): GameSettings;
-  get stats(): GameStats | null;
-  get elapsedTime(): number;
-  get progress(): number;
+import type { PieceConnection } from './piece';
 
-  setStateChangeHandler(handler: (state: GameState) => void): void;
-  setStatsUpdateHandler(handler: (stats: GameStats) => void): void;
-  updateSettings(newSettings: Partial<GameSettings>): void;
-  updateProgress(piecesPlaced: number): void;
-  startGame(totalPieces: number): void;
-  resetToMenu(): void;
-  destroy(): void;
+export interface SerializedPuzzlePiece {
+  id: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  faceUp: boolean;
+  connections: PieceConnection[];
+  isDragging: boolean;
+  dragOffset: { x: number; y: number };
+  isLocked: boolean;
+  originalPosition: { x: number; y: number };
+  connectedPieces: number[];
+  groupId: number | null;
 }

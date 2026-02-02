@@ -7,14 +7,13 @@ import { APP_CONFIG } from '../config/appConfig';
 import { Logger } from '../utils/logger';
 import { ErrorHandler } from '../utils/errorHandler';
 import { GamePersistence, type SavedGameState } from '../utils/gamePersistence';
+import { eventBus } from '../utils/eventEmitter';
 
 export class GameStateManager {
   private _currentState: GameState = 'menu';
   private _settings: GameSettings;
   private _stats: GameStats | null = null;
   private _timerInterval: number | null = null;
-  private onStateChange?: (state: GameState) => void;
-  private onStatsUpdate?: (stats: GameStats) => void;
 
   // Game persistence state
   private _selectedPhoto: PexelsPhoto | null = null;
@@ -85,11 +84,13 @@ export class GameStateManager {
   }
 
   setStateChangeHandler(handler: (state: GameState) => void): void {
-    this.onStateChange = handler;
+    // Legacy method for backward compatibility - use eventBus instead
+    eventBus.on('game:state-changed', ({ state }) => handler(state));
   }
 
   setStatsUpdateHandler(handler: (stats: GameStats) => void): void {
-    this.onStatsUpdate = handler;
+    // Legacy method for backward compatibility - use eventBus instead
+    eventBus.on('game:stats-updated', ({ stats }) => handler(stats));
   }
 
   updateSettings(newSettings: Partial<GameSettings>): void {
@@ -123,7 +124,7 @@ export class GameStateManager {
   private saveSettings(): void {
     ErrorHandler.withSyncErrorHandling(() => {
       localStorage.setItem('puzzleSettings', JSON.stringify(this._settings));
-    }, 'saving settings');
+    }, ErrorHandler.persistenceContext('saving settings'));
   }
 
   private loadSettings(): GameSettings | null {
@@ -143,7 +144,7 @@ export class GameStateManager {
         }
       }
       return null;
-    }, 'loading settings');
+    }, ErrorHandler.persistenceContext('loading settings'));
   }
 
   startGame(totalPieces: number): void {
@@ -155,8 +156,8 @@ export class GameStateManager {
     };
     this.startTimer();
     Logger.info(`Game started with ${totalPieces} pieces`);
-    this.onStateChange?.('playing');
-    this.onStatsUpdate?.(this._stats);
+    eventBus.emit('game:state-changed', { state: 'playing' });
+    eventBus.emit('game:stats-updated', { stats: this._stats });
   }
 
   updateProgress(piecesPlaced: number): void {
@@ -169,8 +170,9 @@ export class GameStateManager {
     if (this._stats.piecesPlaced >= this._stats.totalPieces) {
       this.completeGame();
     } else {
-      Logger.debug('Calling stats update handler for progress');
-      this.onStatsUpdate?.(this._stats);
+      Logger.debug('Emitting progress update event');
+      eventBus.emit('game:progress-updated', { placed: this._stats.piecesPlaced, total: this._stats.totalPieces });
+      eventBus.emit('game:stats-updated', { stats: this._stats });
     }
   }
 
@@ -181,9 +183,9 @@ export class GameStateManager {
     this._currentState = 'completed';
     this.stopTimer();
     Logger.info(`Game completed! Time: ${this.elapsedTime}s, Pieces: ${this._stats.piecesPlaced}/${this._stats.totalPieces}`);
-    Logger.debug('Calling stats update handler for completion');
-    this.onStatsUpdate?.(this._stats);
-    this.onStateChange?.('completed');
+    Logger.debug('Emitting completion events');
+    eventBus.emit('game:stats-updated', { stats: this._stats });
+    eventBus.emit('game:state-changed', { state: 'completed' });
 
     // Clear the saved game state since the puzzle is completed
     this.clearSavedGameState();
@@ -193,15 +195,15 @@ export class GameStateManager {
     this._currentState = 'menu';
     this._stats = null;
     this.stopTimer();
-    this.onStateChange?.('menu');
+    eventBus.emit('game:state-changed', { state: 'menu' });
   }
 
   private startTimer(): void {
     if (this._timerInterval) return;
 
     this._timerInterval = window.setInterval(() => {
-      if (this._stats && this.onStatsUpdate) {
-        this.onStatsUpdate(this._stats);
+      if (this._stats) {
+        eventBus.emit('game:stats-updated', { stats: this._stats });
       }
     }, APP_CONFIG.TIMING.TIMER_UPDATE_INTERVAL); // Update every second
   }
@@ -216,8 +218,6 @@ export class GameStateManager {
   // Cleanup on destroy
   destroy(): void {
     this.stopTimer();
-    this.onStateChange = undefined;
-    this.onStatsUpdate = undefined;
   }
 
   // Game persistence methods
@@ -273,7 +273,7 @@ export class GameStateManager {
     }
 
     // Notify listeners that state has been restored
-    this.onStateChange?.(this._currentState);
+    eventBus.emit('game:state-changed', { state: this._currentState });
 
     Logger.info(`Restored game state: ${this._puzzlePieces.length} pieces, state: ${this._currentState}`);
   }

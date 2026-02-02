@@ -75,7 +75,7 @@ export class GamePersistence {
       localStorage.setItem(this.STORAGE_KEY, jsonString);
 
       Logger.info(`Game state saved: ${pieces.length} pieces, state: ${gameState}`);
-    }, 'saving game state');
+    }, ErrorHandler.persistenceContext('saving game state'));
   }
 
   /**
@@ -109,7 +109,7 @@ export class GamePersistence {
 
       Logger.info(`Game state loaded: ${savedState.pieces.length} pieces, state: ${savedState.gameState}`);
       return savedState;
-    }, 'loading game state') || null;
+    }, ErrorHandler.persistenceContext('loading game state')) || null;
   }
 
   /**
@@ -119,7 +119,7 @@ export class GamePersistence {
     ErrorHandler.withSyncErrorHandling(() => {
       localStorage.removeItem(this.STORAGE_KEY);
       Logger.info('Game state cleared');
-    }, 'clearing game state');
+    }, ErrorHandler.persistenceContext('clearing game state'));
   }
 
   /**
