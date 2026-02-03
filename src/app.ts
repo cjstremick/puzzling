@@ -162,6 +162,10 @@ export class App {
     this.statusBar.setNewPuzzleRequestHandler(() => {
       this.handleNewPuzzleRequest();
     });
+
+    this.statusBar.setFitViewRequestHandler(() => {
+      this.puzzleBoard.fitViewToPieces();
+    });
   }
 
   private handleNewPuzzleRequest(): void {
@@ -235,66 +239,24 @@ export class App {
     return overlay;
   }
 
-  private centerCompletedPuzzle(): void {
-    const pieces = this.puzzleBoard.getPieces();
-
-    if (pieces.length === 0) return;
-
-    // Clear any selection highlights first
-    this.puzzleBoard.clearSelection();
-
-    // Calculate the average center of all pieces (not just locked ones)
-    let totalCenterX = 0;
-    let totalCenterY = 0;
-
-    for (const piece of pieces) {
-      totalCenterX += piece.x + piece.width / 2;
-      totalCenterY += piece.y + piece.height / 2;
-    }
-
-    const puzzleCenterX = totalCenterX / pieces.length;
-    const puzzleCenterY = totalCenterY / pieces.length;
-
-    // Calculate center of the canvas
-    const canvasCenterX = this.canvas.width / 2;
-    const canvasCenterY = this.canvas.height / 2;
-
-    // Calculate offset needed to center the puzzle
-    const offsetX = canvasCenterX - puzzleCenterX;
-    const offsetY = canvasCenterY - puzzleCenterY;
-
-    // Apply offset to all pieces
-    for (const piece of pieces) {
-      piece.x += offsetX;
-      piece.y += offsetY;
-    }
-
-    // Update the puzzle board display
-    this.puzzleBoard.render();
-
-    // Save the updated piece positions
-    this.gameState.updatePuzzlePieces(pieces);
-  }
-
   private showCompletionScreen(): void {
     const stats = this.gameState.stats;
     if (!stats) return;
 
-    // Center the completed puzzle in the view
-    this.centerCompletedPuzzle();
+    this.puzzleBoard.animateCompletionNormalize(() => {
+      const timeSpan = this.completionOverlay.querySelector('#completion-time') as HTMLElement;
+      const piecesSpan = this.completionOverlay.querySelector('#completion-pieces') as HTMLElement;
 
-    const timeSpan = this.completionOverlay.querySelector('#completion-time') as HTMLElement;
-    const piecesSpan = this.completionOverlay.querySelector('#completion-pieces') as HTMLElement;
+      const elapsed = this.gameState.elapsedTime;
+      const minutes = Math.floor(elapsed / 60);
+      const seconds = elapsed % 60;
+      timeSpan.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
-    const elapsed = this.gameState.elapsedTime;
-    const minutes = Math.floor(elapsed / 60);
-    const seconds = elapsed % 60;
-    timeSpan.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      piecesSpan.textContent = `${stats.piecesPlaced}/${stats.totalPieces}`;
 
-    piecesSpan.textContent = `${stats.piecesPlaced}/${stats.totalPieces}`;
-
-    this.completionOverlay.style.display = 'flex';
-    this.soundManager.play('complete');
+      this.completionOverlay.style.display = 'flex';
+      this.soundManager.play('complete');
+    });
   }
 
   private triggerCelebration(): void {
@@ -455,10 +417,9 @@ export class App {
     this.statusBar.setPhoto(photo);
 
     try {
-      // Clean up previous puzzle if it exists
-      if (this.puzzleBoard.hasConnectedPieces()) {
-        this.puzzleBoard.destroy();
-      }
+      // Reset the board state before loading a new puzzle
+      this.puzzleBoard.destroy();
+      this.puzzleBoard.rebindInputHandlers();
 
       // Load puzzle with current difficulty
       const difficulty = this.gameState.settings.difficulty;

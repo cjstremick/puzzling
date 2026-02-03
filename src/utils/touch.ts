@@ -10,6 +10,7 @@ export interface PointerEvent {
   type: 'start' | 'move' | 'end';
   pointerId: number;
   isTouch: boolean;
+  pointerType: string;
 }
 
 export class TouchHandler {
@@ -19,8 +20,7 @@ export class TouchHandler {
   private readonly DOUBLE_TAP_DELAY = APP_CONFIG.TIMING.DOUBLE_TAP_DELAY;
   private readonly LONG_PRESS_DELAY = APP_CONFIG.TIMING.LONG_PRESS_DELAY;
   private readonly POINTER_MOVE_DEBOUNCE = 16; // ~60fps debounce for move events
-
-  // Debounce timers for different event types
+  private abortController: AbortController | null = null;
   private pointerMoveTimeout: number | null = null;
   private pointerStartTimeout: number | null = null;
   private pointerEndTimeout: number | null = null;
@@ -54,115 +54,83 @@ export class TouchHandler {
     onLongPress?: (x: number, y: number) => void
   ): void {
     let longPressTimer: number | null = null;
+    this.abortController?.abort();
+    this.abortController = new AbortController();
+    const { signal } = this.abortController;
 
     // Create debounced versions of callbacks
     const debouncedPointerMove = this.debounce(onPointerMove, this.POINTER_MOVE_DEBOUNCE, 'pointerMoveTimeout');
-    const debouncedPointerStart = this.debounce(onPointerStart, 0, 'pointerStartTimeout'); // No debounce for start
-    const debouncedPointerEnd = this.debounce(onPointerEnd, 0, 'pointerEndTimeout'); // No debounce for end
+    const debouncedPointerStart = this.debounce(onPointerStart, 0, 'pointerStartTimeout');
+    const debouncedPointerEnd = this.debounce(onPointerEnd, 0, 'pointerEndTimeout');
 
-    // Mouse events
-    this.canvas.addEventListener('mousedown', (e) => {
+    // Pointer events (mouse, touch, pen)
+    const handlePointerDown = (e: globalThis.PointerEvent) => {
       e.preventDefault();
-      const event = this.createPointerEvent(e.clientX, e.clientY, 'start', 0, false);
+      this.canvas.setPointerCapture(e.pointerId);
+      const event = this.createPointerEvent(e.clientX, e.clientY, 'start', e.pointerId, e.pointerType === 'touch', e.pointerType);
       eventBus.emit('input:pointer-down', { x: event.x, y: event.y });
       debouncedPointerStart(event);
       this.handleTapDetection(e.clientX, e.clientY, onDoubleTap);
       longPressTimer = window.setTimeout(() => {
         if (onLongPress) onLongPress(e.clientX, e.clientY);
       }, this.LONG_PRESS_DELAY);
-    });
+    };
 
-    this.canvas.addEventListener('mousemove', (e) => {
+    const handlePointerMove = (e: globalThis.PointerEvent) => {
       if (longPressTimer) {
         clearTimeout(longPressTimer);
         longPressTimer = null;
       }
-      const event = this.createPointerEvent(e.clientX, e.clientY, 'move', 0, false);
+      const event = this.createPointerEvent(e.clientX, e.clientY, 'move', e.pointerId, e.pointerType === 'touch', e.pointerType);
       eventBus.emit('input:pointer-move', { x: event.x, y: event.y });
       debouncedPointerMove(event);
-    });
+    };
 
-    this.canvas.addEventListener('mouseup', (e) => {
+    const handlePointerUp = (e: globalThis.PointerEvent) => {
       if (longPressTimer) {
         clearTimeout(longPressTimer);
         longPressTimer = null;
       }
-      const event = this.createPointerEvent(e.clientX, e.clientY, 'end', 0, false);
+      const event = this.createPointerEvent(e.clientX, e.clientY, 'end', e.pointerId, e.pointerType === 'touch', e.pointerType);
       eventBus.emit('input:pointer-up', { x: event.x, y: event.y });
       debouncedPointerEnd(event);
-    });
+      if (this.canvas.hasPointerCapture(e.pointerId)) {
+        this.canvas.releasePointerCapture(e.pointerId);
+      }
+    };
 
-    // Touch events
-    this.canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      if (e.touches.length === 1) {
-        const touch = e.touches[0];
-        const event = this.createPointerEvent(touch.clientX, touch.clientY, 'start', touch.identifier, true);
-        eventBus.emit('input:pointer-down', { x: event.x, y: event.y });
-        debouncedPointerStart(event);
-        this.handleTapDetection(touch.clientX, touch.clientY, onDoubleTap);
-        longPressTimer = window.setTimeout(() => {
-          if (onLongPress) onLongPress(touch.clientX, touch.clientY);
-        }, this.LONG_PRESS_DELAY);
-      }
-    });
-
-    this.canvas.addEventListener('touchmove', (e) => {
-      e.preventDefault();
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-        longPressTimer = null;
-      }
-      if (e.touches.length === 1) {
-        const touch = e.touches[0];
-        const event = this.createPointerEvent(touch.clientX, touch.clientY, 'move', touch.identifier, true);
-        eventBus.emit('input:pointer-move', { x: event.x, y: event.y });
-        debouncedPointerMove(event);
-      }
-    });
-
-    this.canvas.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      if (longPressTimer) {
-        clearTimeout(longPressTimer);
-        longPressTimer = null;
-      }
-      if (e.changedTouches.length === 1) {
-        const touch = e.changedTouches[0];
-        const event = this.createPointerEvent(touch.clientX, touch.clientY, 'end', touch.identifier, true);
-        eventBus.emit('input:pointer-up', { x: event.x, y: event.y });
-        debouncedPointerEnd(event);
-      }
-    });
+    this.canvas.addEventListener('pointerdown', handlePointerDown, { passive: false, signal });
+    this.canvas.addEventListener('pointermove', handlePointerMove, { passive: false, signal });
+    this.canvas.addEventListener('pointerup', handlePointerUp, { passive: false, signal });
+    this.canvas.addEventListener('pointercancel', handlePointerUp, { passive: false, signal });
 
     // Prevent context menu on right click
-    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault(), { signal });
   }
 
   // Cleanup method to clear pending timeouts
   destroy(): void {
-    if (this.pointerMoveTimeout) {
-      clearTimeout(this.pointerMoveTimeout);
-      this.pointerMoveTimeout = null;
-    }
-    if (this.pointerStartTimeout) {
-      clearTimeout(this.pointerStartTimeout);
-      this.pointerStartTimeout = null;
-    }
-    if (this.pointerEndTimeout) {
-      clearTimeout(this.pointerEndTimeout);
-      this.pointerEndTimeout = null;
-    }
+    this.abortController?.abort();
+    this.abortController = null;
+    this.clearDebounceTimeouts();
   }
 
-  private createPointerEvent(clientX: number, clientY: number, type: PointerEvent['type'], pointerId: number, isTouch: boolean): PointerEvent {
+  private createPointerEvent(
+    clientX: number,
+    clientY: number,
+    type: PointerEvent['type'],
+    pointerId: number,
+    isTouch: boolean,
+    pointerType: string
+  ): PointerEvent {
     const rect = this.canvas.getBoundingClientRect();
     return {
       x: clientX - rect.left,
       y: clientY - rect.top,
       type,
       pointerId,
-      isTouch
+      isTouch,
+      pointerType
     };
   }
 
@@ -194,6 +162,31 @@ export class TouchHandler {
       this.tapCount = 0;
     }, this.DOUBLE_TAP_DELAY);
   }
+
+  private clearDebounceTimeouts(): void {
+    if (this.pointerMoveTimeout) {
+      clearTimeout(this.pointerMoveTimeout);
+      this.pointerMoveTimeout = null;
+    }
+    if (this.pointerStartTimeout) {
+      clearTimeout(this.pointerStartTimeout);
+      this.pointerStartTimeout = null;
+    }
+    if (this.pointerEndTimeout) {
+      clearTimeout(this.pointerEndTimeout);
+      this.pointerEndTimeout = null;
+    }
+  }
+
+  static rotateVector(x: number, y: number, degrees: number): { x: number; y: number } {
+    const radians = (degrees * Math.PI) / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return {
+      x: x * cos - y * sin,
+      y: x * sin + y * cos
+    };
+  }
 }
 
 // Snapping utilities
@@ -219,24 +212,43 @@ export class SnapDetector {
       distance: number;
     } | null = null;
 
-    for (const piece of allPieces) {
+     for (const piece of allPieces) {
       if (piece.id === draggedPiece.id) continue;
       
       // Skip pieces that are already connected to the dragged piece (same group)
       if (draggedPiece.connectedPieces.has(piece.id)) continue;
       
-       // Target piece must also be face-up
+       // Target piece must also be face-up and share rotation
        if (!piece.faceUp) continue;
+       if (piece.rotation !== draggedPiece.rotation) continue;
 
       // Find the explicit connection between draggedPiece and this candidate target.
       const connection = this.getConnection(draggedPiece, piece);
       if (!connection) continue;
 
-      // Snap to the position that preserves the pieces' original relative offset.
-      const snapX = piece.x + (draggedPiece.originalPosition.x - piece.originalPosition.x);
-      const snapY = piece.y + (draggedPiece.originalPosition.y - piece.originalPosition.y);
+      // Snap based on rotated solved-space offset between piece centers.
+      const draggedCenter = {
+        x: draggedX + draggedPiece.width / 2,
+        y: draggedY + draggedPiece.height / 2
+      };
+      const targetCenter = {
+        x: piece.x + piece.width / 2,
+        y: piece.y + piece.height / 2
+      };
+      const originalDelta = {
+        x: (draggedPiece.originalPosition.x + draggedPiece.width / 2) - (piece.originalPosition.x + piece.width / 2),
+        y: (draggedPiece.originalPosition.y + draggedPiece.height / 2) - (piece.originalPosition.y + piece.height / 2)
+      };
+      const rotatedDelta = TouchHandler.rotateVector(originalDelta.x, originalDelta.y, draggedPiece.rotation);
+      const expectedCenter = {
+        x: targetCenter.x + rotatedDelta.x,
+        y: targetCenter.y + rotatedDelta.y
+      };
 
-      const distance = Math.hypot(draggedX - snapX, draggedY - snapY);
+      const snapX = expectedCenter.x - draggedPiece.width / 2;
+      const snapY = expectedCenter.y - draggedPiece.height / 2;
+
+      const distance = Math.hypot(draggedCenter.x - expectedCenter.x, draggedCenter.y - expectedCenter.y);
 
       if (distance < this.SNAP_DISTANCE && (!closestSnap || distance < closestSnap.distance)) {
         closestSnap = {

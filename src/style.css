@@ -14,6 +14,13 @@ html, body {
   overflow: hidden; /* Prevent scrollbars */
 }
 
+@media (prefers-color-scheme: dark) {
+  html, body {
+    background-color: #0f1115;
+    color: #e6e6e6;
+  }
+}
+
 #puzzle-canvas {
   display: block;
   width: 100vw;
@@ -25,11 +32,9 @@ html, body {
   cursor: grabbing;
 }
 
-/* Basic responsive design */
 /* Touch-friendly adjustments */
-  #puzzle-canvas {
-    touch-action: none; /* Prevent browser touch handling */
-  }
+#puzzle-canvas {
+  touch-action: none; /* Prevent browser touch handling */
 }
 
 /* Status Bar */

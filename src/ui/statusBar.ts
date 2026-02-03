@@ -10,10 +10,12 @@ export class StatusBar {
   private attributionElement!: HTMLElement;
   private peekButton!: HTMLElement;
   private newPuzzleButton!: HTMLElement;
+  private fitButton!: HTMLElement;
   private peekOverlay!: HTMLElement;
   private gameState: GameStateManager;
   private currentPhoto?: PexelsPhoto;
   private onNewPuzzleRequest?: () => void;
+  private onFitViewRequest?: () => void;
 
   constructor(gameState: GameStateManager) {
     this.gameState = gameState;
@@ -22,6 +24,7 @@ export class StatusBar {
     this.progressElement = this.element.querySelector('.status-progress') as HTMLElement;
     this.attributionElement = this.element.querySelector('.status-attribution') as HTMLElement;
     this.peekButton = this.element.querySelector('.peek-button') as HTMLElement;
+    this.fitButton = this.element.querySelector('.fit-button') as HTMLElement;
     this.newPuzzleButton = this.element.querySelector('.new-puzzle-button') as HTMLElement;
     this.peekOverlay = this.createPeekOverlay();
 
@@ -40,6 +43,7 @@ export class StatusBar {
       </div>
       <div class="status-center" style="flex: 1; display: flex; justify-content: center; gap: 10px;">
         <button class="peek-button">Peek</button>
+        <button class="fit-button">Fit</button>
         <button class="new-puzzle-button">New Puzzle</button>
       </div>
       <div class="status-attribution"></div>
@@ -93,8 +97,24 @@ export class StatusBar {
       transition: 'background-color 0.2s'
     });
 
-    newPuzzleButton.addEventListener('mouseover', () => newPuzzleButton.style.backgroundColor = '#c82333');
+    newPuzzleButton.addEventListener('mouseover', () => newPuzzleButton.style.backgroundColor = '#c46610');
     newPuzzleButton.addEventListener('mouseout', () => newPuzzleButton.style.backgroundColor = '#fd7e14');
+
+    // Style the fit button
+    const fitButton = element.querySelector('.fit-button') as HTMLElement;
+    Object.assign(fitButton.style, {
+      backgroundColor: '#20c997',
+      color: 'white',
+      border: 'none',
+      padding: '8px 16px',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      fontSize: '14px',
+      transition: 'background-color 0.2s'
+    });
+
+    fitButton.addEventListener('mouseover', () => fitButton.style.backgroundColor = '#148f77');
+    fitButton.addEventListener('mouseout', () => fitButton.style.backgroundColor = '#20c997');
 
     return element;
   }
@@ -188,6 +208,11 @@ export class StatusBar {
       this.showPeek();
     });
 
+    // Fit button handler
+    this.fitButton.addEventListener('click', () => {
+      this.requestFitView();
+    });
+
     // New puzzle button handler
     this.newPuzzleButton.addEventListener('click', () => {
       this.requestNewPuzzle();
@@ -268,8 +293,16 @@ export class StatusBar {
     this.onNewPuzzleRequest?.();
   }
 
+  private requestFitView(): void {
+    this.onFitViewRequest?.();
+  }
+
   setNewPuzzleRequestHandler(handler: () => void): void {
     this.onNewPuzzleRequest = handler;
+  }
+
+  setFitViewRequestHandler(handler: () => void): void {
+    this.onFitViewRequest = handler;
   }
 
   destroy(): void {
